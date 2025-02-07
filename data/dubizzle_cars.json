@@ -1,0 +1,76 @@
+[
+  {
+    "short_url": "https://uae.dubizzle.com/motors/used-cars/ford/explorer/2025/2/7/2014-ford-explorer-4wdgcc-2-482---926e28fe2eb44394a77d5c9b7a2bf271/",
+    "title": "Ford Explorer XL",
+    "photos": [
+      "https://dbz-images.dubizzle.com/images/2025/02/07/0195a58e6c11495e9237a1a781dd73c3-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/3bd35a70bc214e479c8a72149435e794-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/4ad7969356a140f097091b90a3dba3dc-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/158efcd147db44d7991aa29c97076b1a-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/1c29e0443d11458cb2abc93c64d52b8d-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/43472ee197a44e38bffe9902c2bfccbe-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/e109895e5e58494ea0898a47b215d319-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/0148b08deeb94ddfa869590a27473a2d-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/969358dbfc7747b29326070d37432005-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/23843b2503094b77b8a853ad2d9817a7-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/84dfd8c8becb4ed5b2484a0990e1d060-.jpeg?impolicy=dpv"
+    ],
+    "make": "Ford",
+    "model": "Explorer",
+    "year": "2014",
+    "body_type": "SUV",
+    "horsepower": "200 - 299 HP",
+    "fuel_type": "Petrol",
+    "motors_trim": "Petrol",
+    "kilometers": "246000",
+    "price": {
+      "formatted": "23,000",
+      "raw": 23000,
+      "currency": "AED"
+    },
+    "exterior_color": "White",
+    "location": "Business Bay, Dubai, UAE",
+    "contact": {
+      "phone": "+971565620398"
+    }
+  },
+  {
+    "short_url": "https://uae.dubizzle.com/motors/used-cars/ford/taurus/2025/2/7/ford-taurus-2024-new-full-options-monthly--2-115---0642fea8bfaf45509c5f1511fc365ec3/",
+    "title": "Ford Taurus Titanium",
+    "photos": [
+      "https://dbz-images.dubizzle.com/images/2025/02/07/c0c1a2423ad24163a1281d6609d302cc-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/96ec5263209d4706b072471a40b7c7dd-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/2512d4888dfb478c988f7ba72ea09871-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/1bd2b4dc915c4c8f956e824b0e0cb9d1-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/ea9a1e677ff5416fa8b60815f847ca61-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/31cba15a53134f31968255070a870974-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/e93cfc1f23eb4fe9aea85fa4c9ce3346-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/19788b9b06d142e4af7846cab20cf895-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/3304c4df88ac459d89fcacb40a0c3cbd-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/73e56e9b967f496a9676c00d3f7f6621-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/51ce3151adf54dea838cc7c97a1d6003-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/37c1f067e6fb4d92a084a45e27aa3e99-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/455263a395934ca59ba150838fd5e70f-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/e63cc5e8bf4847d2bb75ace73530b09e-.jpeg?impolicy=dpv",
+      "https://dbz-images.dubizzle.com/images/2025/02/07/5993d84e74964faa855b1c324272b02a-.jpeg?impolicy=dpv"
+    ],
+    "make": "Ford",
+    "model": "Taurus",
+    "year": "2024",
+    "body_type": "Sedan",
+    "horsepower": "200 - 299 HP",
+    "fuel_type": "Petrol",
+    "motors_trim": "Petrol",
+    "kilometers": "0",
+    "price": {
+      "formatted": "115,000",
+      "raw": 115000,
+      "currency": "AED"
+    },
+    "exterior_color": "Black",
+    "location": "Business Bay, Dubai, UAE",
+    "contact": {
+      "phone": "+971504088588"
+    }
+  }
+]
