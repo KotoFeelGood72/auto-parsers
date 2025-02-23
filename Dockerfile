@@ -1,5 +1,5 @@
-# Используем официальный образ Node.js (лучше LTS-версию)
-FROM mcr.microsoft.com/playwright:v1.50.1-focal
+# Используем стандартный образ Node.js
+FROM node:18-bullseye
 
 # Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
@@ -7,8 +7,8 @@ WORKDIR /app
 # Копируем package.json и package-lock.json перед установкой зависимостей
 COPY package*.json ./
 
-# Устанавливаем зависимости, включая Playwright
-RUN npm install && npx playwright install
+# Устанавливаем зависимости (включая Playwright)
+RUN npm install && npx playwright install --with-deps
 
 # Копируем весь код парсера в контейнер
 COPY . .
