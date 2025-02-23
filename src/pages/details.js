@@ -77,6 +77,42 @@ async function scrapeCarDetails(url) {
 
     let phoneNumber = null;
 
+
+// Парсим информацию о продавце
+let sellerName = "Не указан";
+let sellerType = "Частное лицо";
+let sellerLogo = null;
+let sellerProfileLink = null;
+
+try {
+  console.log("⌛ Ожидаем загрузку блока продавца...");
+  await page.waitForSelector('[data-testid="name"]', { timeout: 30000 });
+
+  sellerName = await page.$eval(
+    '[data-testid="name"]',
+    (el) => el.innerText.trim()
+  );
+
+  sellerType = await page.$eval(
+    '[data-testid="type"]',
+    (el) => el.innerText.trim()
+  );
+
+  sellerLogo = await page.$eval('[data-testid="logo"] img', (el) => el.src);
+
+  const sellerProfileElement = await page.$('[data-testid="view-all-cars"]');
+  if (sellerProfileElement) {
+    sellerProfileLink = await page.$eval(
+      '[data-testid="view-all-cars"]',
+      (el) => el.href
+    );
+  }
+
+  console.log(`🏢 Продавец: ${sellerName} (${sellerType})`);
+} catch (error) {
+  console.warn("⚠️ Ошибка при получении данных о продавце:", error);
+}
+
     // Берём первый локатор кнопки "Call"
     const callButton = page.locator('[data-testid="call-cta-button"]').first();
 
@@ -217,6 +253,12 @@ async function scrapeCarDetails(url) {
       fuel_type: fuelType,
       motors_trim: motorsTrim,
       kilometers,
+      sellers: {
+        sellerName: sellerName || "Не указан",
+        sellerType: sellerType || "Частное лицо",
+        sellerLogo: sellerLogo || null,
+        sellerProfileLink: sellerProfileLink || null,
+      },
       price: {
         formatted: priceFormatted,
         raw: priceRaw,

@@ -1,0 +1,62 @@
+# services:
+#   db:
+#     image: bitnami/postgresql
+#     container_name: auto_db
+#     ports:
+#       - "5432:5432"
+#     environment:
+#       - POSTGRES_USER=root
+#       - POSTGRES_PASSWORD=P@rs3r_S3cR3t!
+#       - POSTGRES_DB=auto_db
+#       - POSTGRESQL_MAX_CONNECTIONS=10000
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     networks:
+#       - network
+
+# networks:
+#   network:
+#     driver: bridge
+  
+# volumes:
+#   postgres_data:
+#     name: postgres_data
+
+services:
+  db:
+    image: bitnami/postgresql
+    container_name: auto_db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=P@rs3r_S3cR3t!
+      - POSTGRES_DB=auto_db
+      - POSTGRESQL_MAX_CONNECTIONS=10000
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - network
+
+  parser:
+    build: .
+    container_name: car_parser
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://root:P@rs3r_S3cR3t!@db:5432/auto_db
+    networks:
+      - network
+    volumes:
+      - .:/app
+    command: ["npm", "start"]
+
+networks:
+  network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: postgres_data
