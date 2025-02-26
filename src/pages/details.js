@@ -13,15 +13,16 @@ async function scrapeCarDetails(url) {
     });
 
     await page.goto(url, {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
       timeout: 90000,
     });
 
     console.log("📄 Загружаем данные...");
 
-    await page.waitForSelector('[data-testid="listing-price"]', {
-      timeout: 30000,
-    });
+    await page.waitForFunction(() => {
+      const elem = document.querySelector('[data-testid="listing-price"]');
+      return elem && elem.innerText.trim().length > 0;
+   }, { timeout: 60000 });
 
     const title = await page.$eval(
       '[data-testid="listing-sub-heading"]',
