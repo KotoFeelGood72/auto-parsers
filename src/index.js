@@ -44,6 +44,7 @@ const { scrapeListings } = require("./pages/listings");
 const { scrapeCarDetails } = require("./pages/details");
 const { saveData } = require("./utils/saveData");
 
+
 (async () => {
     console.log("🚀 Запуск парсера...");
 

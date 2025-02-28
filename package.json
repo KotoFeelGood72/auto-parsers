@@ -1,7 +1,7 @@
 {
   "name": "auto-parser",
   "version": "1.0.0",
-  "main": "src/index.js",
+ "start": "node init_db.js && node src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
