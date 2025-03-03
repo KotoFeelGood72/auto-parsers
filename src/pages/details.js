@@ -276,6 +276,11 @@ try {
     return carDetails;
   } catch (error) {
     console.error(`❌ Ошибка при загрузке данных с ${url}:`, error);
+    if (attempt < 2) {
+      console.log("🔄 Перезапуск браузера и повторная попытка...");
+      await browser.close();
+      return await scrapeCarDetails(url, attempt + 1);
+    }
     return null;
   } finally {
     await browser.close();
