@@ -28,7 +28,7 @@
 
 const { scrapeListings } = require("./pages/listings");
 const { scrapeCarDetails } = require("./pages/details");
-const { saveData } = require("./utils/saveData");
+const { parseAndSave } = require("./utils/saveData");
 
 const CONCURRENT_LIMIT = 5; // Сколько ссылок обрабатывать одновременно
 const BATCH_SIZE = 50; // Сколько машин сохранять в БД за один раз
@@ -66,7 +66,7 @@ const BATCH_SIZE = 50; // Сколько машин сохранять в БД �
 
             // Если накопили BATCH_SIZE записей – сохраняем в БД
             if (carsToSave.length >= BATCH_SIZE) {
-                await saveData([...carsToSave]); // Копируем, чтобы избежать изменений во время сохранения
+                await parseAndSave([...carsToSave]); // Копируем, чтобы избежать изменений во время сохранения
                 carsToSave.length = 0; // Очищаем массив после сохранения
             }
         }
