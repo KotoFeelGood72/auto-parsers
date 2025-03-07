@@ -90,7 +90,7 @@ const { scrapeCarDetails } = require("./pages/details");
 const { parseAndSave } = require("./utils/saveData");
 const { startBrowser } = require("./utils/browser");
 
-const CONCURRENT_LIMIT = 5; // Одновременно парсим 5 машин
+const CONCURRENT_LIMIT = 2; // Одновременно парсим 5 машин
 const BATCH_SIZE = 10; // Записываем в БД по 50 машин
 const RESTART_BROWSER_THRESHOLD = 1000; // Перезапускаем браузер каждые 1000 записей
 
