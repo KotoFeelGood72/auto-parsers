@@ -104,7 +104,7 @@
 const pool = require("../db");
 
 // Размер батча (сколько записей вставлять за раз)
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 10;
 
 async function saveDataBatch(carList) {
     if (!carList || carList.length === 0) {
