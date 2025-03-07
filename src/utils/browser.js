@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 
 async function startBrowser() {
     return await chromium.launch({
-        headless: false,
+        headless: true,
         args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
