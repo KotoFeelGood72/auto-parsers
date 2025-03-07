@@ -1,19 +1,38 @@
 const { startBrowser } = require("../utils/browser");
-// const { extractText } = require("./details/extractText");
-
 let browser;
 let context;
+let openPages = 0;
+const MAX_TABS = 5;  // 🔹 Ограничиваем до 5 вкладок одновременно
+const RESTART_THRESHOLD = 1000;  // 🔹 Перезапуск браузера каждые 1000 страниц
+let totalParsed = 0;
 
 async function initBrowser() {
-    if (!browser) {
-        console.log("🚀 Запускаем новый браузер...");
-        browser = await startBrowser();
-        context = await browser.newContext(); // Используем один контекст для всех страниц
-    }
+  if (!browser) {
+      console.log("🚀 Запускаем новый браузер...");
+      browser = await startBrowser();
+      context = await browser.newContext();
+  }
 }
 
+async function restartBrowser() {
+  console.log("♻ Перезапуск браузера...");
+  if (browser) {
+      await browser.close();
+  }
+  browser = null;
+  await initBrowser();
+  totalParsed = 0;
+}
 async function scrapeCarDetails(url, attempt = 0) {
   await initBrowser();
+
+  // 🔹 Ограничиваем число вкладок (чтобы не перегружать сервер)
+  while (openPages >= MAX_TABS) {
+      console.log("⏳ Достигнут лимит вкладок, ждём...");
+      await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  openPages++;
   const page = await context.newPage();
 
   try {
@@ -287,23 +306,39 @@ try {
     };
 
     console.log(carDetails);
+    totalParsed++;
+
+    // 🔹 Перезапускаем браузер каждые 1000 страниц
+    if (totalParsed >= RESTART_THRESHOLD) {
+        await restartBrowser();
+    }
     return carDetails;
   } catch (error) {
     console.error(`❌ Ошибка при загрузке данных с ${url}:`, error);
     if (attempt < 2) {
-      console.log("🔄 Перезапуск браузера и повторная попытка...");
-      await browser.close();
-      return await scrapeCarDetails(url, attempt + 1);
+        console.log("🔄 Перезапуск браузера и повторная попытка...");
+        await restartBrowser();
+        return await scrapeCarDetails(url, attempt + 1);
     }
     return null;
   } finally {
     try {
-        await page.close(); // ✅ Гарантированно закрываем страницу
-    } catch (err) {
-        console.warn("⚠ Ошибка при закрытии страницы:", err);
-    }
+      await page.close();  // ✅ Гарантированно закрываем страницу
+      openPages--;
+  } catch (err) {
+      console.warn("⚠ Ошибка при закрытии страницы:", err);
+  }
 }
 }
+
+
+process.on('SIGINT', async () => {
+  console.log("🛑 Завершение работы, закрываем браузер...");
+  if (browser) await browser.close();
+  process.exit();
+});
+
+
 
 module.exports = { scrapeCarDetails };
 
