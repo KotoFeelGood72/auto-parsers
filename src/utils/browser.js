@@ -7,7 +7,7 @@ async function startBrowser() {
         "--disable-gpu",
         "--disable-dev-shm-usage",
         "--single-process"
-    ] }); // Можно true, если не нужен UI
+    ] }); 
     return browser;
 }
 
