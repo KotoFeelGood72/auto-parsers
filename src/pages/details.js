@@ -1,9 +1,20 @@
 const { startBrowser } = require("../utils/browser");
 // const { extractText } = require("./details/extractText");
 
+let browser;
+let context;
+
+async function initBrowser() {
+    if (!browser) {
+        console.log("🚀 Запускаем новый браузер...");
+        browser = await startBrowser();
+        context = await browser.newContext(); // Используем один контекст для всех страниц
+    }
+}
+
 async function scrapeCarDetails(url, attempt = 0) {
-  const browser = await startBrowser();
-  const page = await browser.newPage();
+  await initBrowser();
+  const page = await context.newPage();
 
   try {
     console.log(`🚗 Переходим к ${url}`);
@@ -243,6 +254,8 @@ try {
 
     console.log(`📸 Собрано изображений: ${photos.length}`);
 
+    await page.waitForTimeout(500);
+
     const carDetails = {
       short_url: shortUrl,
       title,
@@ -284,8 +297,12 @@ try {
     }
     return null;
   } finally {
-    await browser.close();
-  }
+    try {
+        await page.close(); // ✅ Гарантированно закрываем страницу
+    } catch (err) {
+        console.warn("⚠ Ошибка при закрытии страницы:", err);
+    }
+}
 }
 
 module.exports = { scrapeCarDetails };
