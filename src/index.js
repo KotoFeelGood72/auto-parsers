@@ -137,9 +137,8 @@ async function restartBrowser() {
 
             // Ограничиваем количество активных потоков
             if (activePromises.size >= CONCURRENT_LIMIT) {
-                await Promise.race(activePromises);
+                await Promise.all([...activePromises]); // Вместо race ждем все промисы
             }
-
             // Если накопили BATCH_SIZE записей – сохраняем в БД
             if (carsToSave.length >= BATCH_SIZE) {
                 await parseAndSave([...carsToSave]);
