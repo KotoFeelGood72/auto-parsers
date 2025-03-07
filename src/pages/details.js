@@ -23,44 +23,55 @@ const page = await context.newPage();
       return elem && elem.innerText.trim().length > 0;
    }, { timeout: 60000 });
 
-   const selectors = {
-    title: '[data-testid="listing-sub-heading"]',
-    make: '[data-testid="listing-sub-heading"]',
-    model: '[data-testid="listing-sub-heading"]',
-    year: '[data-testid="listing-year-value"]',
-    bodyType: '[data-testid="overview-body_type-value"]',
-    horsepower: '[data-testid="overview-horsepower-value"]',
-    fuelType: '[data-testid="overview-fuel_type-value"]',
-    motorsTrim: '[data-testid="overview-fuel_type-value"]',
-    kilometers: '[data-testid="listing-kilometers-value"]',
-    exteriorColor: '[data-testid="overview-exterior_color-value"]',
-    location: '[data-testid="listing-location-map"]',
-    priceFormatted: '[data-testid="listing-price"] span'
-};
+    const title = await page.$eval(
+      '[data-testid="listing-sub-heading"]',
+      (el) => el.innerText.trim()
+    );
+    const make = await page.$eval('[data-testid="listing-sub-heading"]', (el) =>
+      el.innerText.split(" ")[0].trim()
+    );
+    const model = await page.$eval(
+      '[data-testid="listing-sub-heading"]',
+      (el) => el.innerText.split(" ")[1].trim()
+    );
+    const year = await page.$eval('[data-testid="listing-year-value"]', (el) =>
+      el.innerText.trim()
+    );
+    const bodyType = await page.$eval(
+      '[data-testid="overview-body_type-value"]',
+      (el) => el.innerText.trim()
+    );
+    const horsepower = await page.$eval(
+      '[data-testid="overview-horsepower-value"]',
+      (el) => el.innerText.trim()
+    );
+    const fuelType = await page.$eval(
+      '[data-testid="overview-fuel_type-value"]',
+      (el) => el.innerText.trim()
+    );
+    const motorsTrim = await page.$eval(
+      '[data-testid="overview-fuel_type-value"]',
+      (el) => el.innerText.trim()
+    );
+    const kilometers = await page.$eval(
+      '[data-testid="listing-kilometers-value"]',
+      (el) => el.innerText.trim().replace(/\D/g, "")
+    );
+    const exteriorColor = await page.$eval(
+      '[data-testid="overview-exterior_color-value"]',
+      (el) => el.innerText.trim()
+    );
+    const location = await page.$eval(
+      '[data-testid="listing-location-map"]',
+      (el) => el.innerText.trim()
+    );
 
-
-for (const [key, selector] of Object.entries(selectors)) {
-    try {
-        await page.waitForSelector(selector, { timeout: 5000 });
-        carDetails[key] = await page.$eval(selector, (el) => el.innerText.trim());
-    } catch (err) {
-        console.warn(`⚠️ Не найден элемент ${key}`);
-        carDetails[key] = "Не указано";
-    }
-}
-
-// ✅ Специфическая обработка значений
-if (carDetails.make.includes(" ")) {
-    [carDetails.make, carDetails.model] = carDetails.make.split(" ");
-} else {
-    carDetails.make = "Не указано";
-    carDetails.model = "Не указано";
-}
-
-carDetails.priceFormatted = carDetails.priceFormatted.replace("AED", "").trim();
-carDetails.kilometers = carDetails.kilometers.replace(/\D/g, "");
-
+    const priceFormatted = await page.$eval(
+      '[data-testid="listing-price"] span',
+      (el) => el.innerText.trim().replace("AED", "").trim()
+    );
     const priceRaw = parseFloat(priceFormatted.replace(/,/g, ""));
+    const currency = "AED";
 
     const shortUrl = url;
 
@@ -253,7 +264,7 @@ try {
       price: {
         formatted: priceFormatted,
         raw: priceRaw,
-        currency: 'AED',
+        currency,
       },
       exterior_color: exteriorColor,
       location,
@@ -278,6 +289,7 @@ try {
     } catch (err) {
         console.warn("⚠ Ошибка при закрытии страницы:", err);
     }
+}
 }
 }
 
