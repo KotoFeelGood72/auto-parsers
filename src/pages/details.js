@@ -86,7 +86,7 @@ let sellerProfileLink = null;
 
 try {
   console.log("⌛ Ожидаем загрузку блока продавца...");
-  await page.waitForSelector('[data-testid="name"]', { timeout: 30000 });
+  await page.waitForSelector('[data-testid="name"]', { timeout: 30000, state: "attached" });
 
   sellerName = await page.$eval(
     '[data-testid="name"]',
@@ -170,7 +170,7 @@ try {
       const closeButton = modal.locator('[data-testid="close-button"]');
       if ((await closeButton.count()) > 0) {
         await closeButton.click();
-        await page.waitForTimeout(20000);
+        await page.waitForTimeout(2000);
         console.log("✅ Модальное окно закрыто.");
       }
     } else {
@@ -179,7 +179,7 @@ try {
 
     // 🔹 Кликаем по первому `.MuiImageListItem-standard`
     const mainImageSelector = ".MuiImageListItem-standard";
-    await page.waitForSelector(mainImageSelector, { timeout: 20000 });
+    await page.waitForSelector(mainImageSelector, { timeout: 20000, state: "attached" });
 
     let clicked = false;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -212,7 +212,7 @@ try {
     console.log("📸 Кликнули, ждем загрузки модалки...");
 
     // 🔹 Ждем появления модального окна
-    await page.waitForSelector(".MuiModal-root", { timeout: 15000 });
+    await page.waitForSelector(".MuiModal-root", { timeout: 15000, state: "attached" });
 
     // 🔹 Проверяем, загрузились ли изображения в модалке
     await page.waitForFunction(
@@ -222,7 +222,7 @@ try {
           modal && modal.querySelectorAll(".MuiImageList-root img").length > 0
         );
       },
-      { timeout: 45000 }
+      { timeout: 45000, state: "attached" }
     );
 
     // 🔹 Собираем изображения
