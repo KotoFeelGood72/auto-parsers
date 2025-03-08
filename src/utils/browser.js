@@ -2,7 +2,7 @@ const { chromium } = require('playwright');
 
 async function startBrowser() {
     return await chromium.launch({
-        headless: false,
+        headless: true,
         args: [
             '--disable-gpu',               // Отключаем GPU
             '--disable-software-rasterizer', // Отключаем рендеринг
