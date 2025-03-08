@@ -1,6 +1,6 @@
 const pool = require("../db");
 
-const BATCH_SIZE = 10;  // 🔹 Оптимальный размер пакета записей
+const BATCH_SIZE = 10; // 🔹 Оптимальный размер пакета записей
 
 async function saveDataBatch(carList) {
     if (!carList || carList.length === 0) {
@@ -37,10 +37,10 @@ async function saveDataBatch(carList) {
                 car.exterior_color || "Неизвестно",
                 car.location || "Неизвестно",
                 car.contact?.phone || "Не указан",
-                car.sellers?.sellerName || "Неизвестен",
-                car.sellers?.sellerType || "Неизвестен",
-                car.sellers?.sellerLogo || null,
-                car.sellers?.sellerProfileLink || null
+                car.sellers?.name || "Неизвестен", // ✅ Исправлено
+                car.sellers?.type || "Неизвестен", // ✅ Исправлено
+                car.sellers?.logo || null, // ✅ Исправлено
+                car.sellers?.profileLink || null // ✅ Исправлено
             );
 
             carPlaceholders.push(`(
@@ -88,10 +88,10 @@ async function saveDataBatch(carList) {
                     exterior_color = EXCLUDED.exterior_color,
                     location = EXCLUDED.location,
                     phone = EXCLUDED.phone,
-                    seller_name = EXCLUDED.seller_name,
-                    seller_type = EXCLUDED.seller_type,
-                    seller_logo = EXCLUDED.seller_logo,
-                    seller_profile_link = EXCLUDED.seller_profile_link,
+                    seller_name = EXCLUDED.seller_name,  -- ✅ Исправлено
+                    seller_type = EXCLUDED.seller_type,  -- ✅ Исправлено
+                    seller_logo = EXCLUDED.seller_logo,  -- ✅ Исправлено
+                    seller_profile_link = EXCLUDED.seller_profile_link,  -- ✅ Исправлено
                     updated_at = NOW();
             `;
             await client.query(insertCarQuery, carValues);

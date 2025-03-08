@@ -3,8 +3,8 @@ const { scrapeCarDetails } = require("./pages/details");
 const { parseAndSave } = require("./utils/saveData");
 const { startBrowser } = require("./utils/browser");
 
-const CONCURRENT_LIMIT = 5; // 🔹 Количество одновременных потоков
-const BATCH_SIZE = 10; // 🔹 Записываем в БД каждые 10 машин
+const CONCURRENT_LIMIT = 1; // 🔹 Количество одновременных потоков
+const BATCH_SIZE = 5; // 🔹 Записываем в БД каждые 10 машин
 const RESTART_BROWSER_THRESHOLD = 1000; // 🔹 Перезапускаем браузер каждые 1000 машин
 
 let browser;
