@@ -5,15 +5,13 @@ const { extractPhoneNumber } = require("./details/extractPhoneNumber");
 
 async function getPage(context) {
   const pages = context.pages();
-  if (pages.length < 3) { // максимум 3 страницы
-    const page = await context.newPage();
-
-    return page;
+  if (pages.length < 3) { 
+    return await context.newPage();
   }
 
   const page = pages.shift();
-  await page.goto("about:blank");
-  return page;
+  await page.close(); // 🔹 Закрываем старую страницу
+  return await context.newPage(); // 🔹 Создаём новую
 }
 
 
@@ -41,12 +39,6 @@ async function scrapeCarDetails(url, context, attempt = 0) {
     }
 
     console.log("📄 Загружаем данные...");
-
-    await page.waitForFunction(() => {
-      const elem = document.querySelector('[data-testid="listing-price"]');
-      return elem && elem.innerText.trim().length > 0;
-    }, { timeout: 15000 }).catch(() => console.warn("⚠️ Не удалось дождаться загрузки данных"));
-
     const title = await extractText(page, '[data-testid="listing-sub-heading"]').catch(() => "Не указано");
     const make = title.split(" ")[0] || "Не указано";
     const model = title.split(" ")[1] || "Не указано";
@@ -61,7 +53,6 @@ async function scrapeCarDetails(url, context, attempt = 0) {
 
     const priceFormatted = await extractText(page, '[data-testid="listing-price"] span').catch(() => "0");
     const priceRaw = parseFloat(priceFormatted.replace(/,/g, "").replace("AED", "").trim()) || 0;
-    const currency = "AED";
 
     const shortUrl = url;
 
@@ -75,7 +66,7 @@ async function scrapeCarDetails(url, context, attempt = 0) {
     const phoneNumber = await extractPhoneNumber(page).catch(() => "Не указан");
 // 🔹 Кликаем по первому `.MuiImageListItem-standard`
 const mainImageSelector = ".MuiImageListItem-standard";
-await page.waitForSelector(mainImageSelector, { timeout: 20000, state: "attached" });
+await page.waitForSelector(mainImageSelector, { timeout: 5000, state: "attached" });
 
 let clicked = false;
 for (let attempt = 0; attempt < 3; attempt++) {
@@ -85,7 +76,7 @@ for (let attempt = 0; attempt < 3; attempt++) {
   const mainImage = await page.$(mainImageSelector);
   if (!mainImage) {
     console.warn("⚠️ Главное изображение исчезло, пробуем заново...");
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
     continue;
   }
 
@@ -97,7 +88,7 @@ for (let attempt = 0; attempt < 3; attempt++) {
     break;
   } catch (error) {
     console.warn("⚠️ Элемент изменился, пробуем снова...");
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
   }
 }
 
@@ -108,7 +99,7 @@ if (!clicked) {
 console.log("📸 Кликнули, ждем загрузки модалки...");
 
 // 🔹 Ждем появления модального окна
-await page.waitForSelector(".MuiModal-root", { timeout: 15000, state: "attached" });
+await page.waitForSelector(".MuiModal-root", { timeout: 2000, state: "attached" });
 
 // 🔹 Проверяем, загрузились ли изображения в модалке
 await page.waitForFunction(
@@ -118,7 +109,7 @@ await page.waitForFunction(
       modal && modal.querySelectorAll(".MuiImageList-root img").length > 0
     );
   },
-  { timeout: 45000, state: "attached" }
+  { timeout: 5000, state: "attached" }
 );
 
 // 🔹 Собираем изображения
@@ -155,7 +146,7 @@ await page.waitForTimeout(500);
       price: {
         formatted: priceFormatted,
         raw: priceRaw,
-        currency,
+        currency: 'AED',
       },
       exterior_color: exteriorColor,
       location,
