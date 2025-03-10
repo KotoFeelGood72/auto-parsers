@@ -5,9 +5,7 @@ async function startBrowser() {
         headless: true,
         args: [
             '--disable-gpu', // Отключаем GPU
-            '--disable-software-rasterizer', // Отключаем рендеринг
             '--disable-dev-shm-usage', // Убираем ограничение shared memory
-            '--no-sandbox', // Запуск без песочницы
             '--disable-background-networking',
             '--disable-background-timer-throttling',
             '--disable-backgrounding-occluded-windows',
