@@ -1,10 +1,24 @@
 const { extractText } = require("./details/extractText");
 const { extractSellerDetails } = require("./details/extractSellerDetails");
 const { extractPhoneNumber } = require("./details/extractPhoneNumber");
-const { extractPhotos } = require("./details/extractPhotos");
+
+
+async function getPage(context) {
+  const pages = context.pages();
+  if (pages.length < 3) { // максимум 3 страницы
+    const page = await context.newPage();
+
+    return page;
+  }
+
+  const page = pages.shift();
+  await page.goto("about:blank");
+  return page;
+}
+
 
 async function scrapeCarDetails(url, context, attempt = 0) {
-  const page = await context.newPage(); 
+  const page = await getPage(context);
 
   try {
     console.log(`🚗 Переходим к ${url}`);
