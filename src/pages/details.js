@@ -14,17 +14,24 @@ async function scrapeCarDetails(url, context, attempt = 0) {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
 
-    await page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: 90000,
-    });
+    try {
+      await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      });
+    } catch (error) {
+      if (error.name === "TimeoutError") {
+        console.warn(`⚠️ Таймаут загрузки страницы: ${url}`);
+        return null; // Пропускаем страницу, если она не загрузилась
+      }
+    }
 
     console.log("📄 Загружаем данные...");
 
     await page.waitForFunction(() => {
       const elem = document.querySelector('[data-testid="listing-price"]');
       return elem && elem.innerText.trim().length > 0;
-    }, { timeout: 60000 }).catch(() => console.warn("⚠️ Не удалось дождаться загрузки данных"));
+    }, { timeout: 15000 }).catch(() => console.warn("⚠️ Не удалось дождаться загрузки данных"));
 
     const title = await extractText(page, '[data-testid="listing-sub-heading"]').catch(() => "Не указано");
     const make = title.split(" ")[0] || "Не указано";
