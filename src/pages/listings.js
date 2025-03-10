@@ -9,11 +9,11 @@ async function* scrapeListings(context) { // ✅ Принимаем контек
 
   await page.goto("https://uae.dubizzle.com/motors/used-cars/", {
       waitUntil: "domcontentloaded",
-      timeout: 90000,
+      timeout: 10000,
   });
 
   console.log("📄 Собираем ссылки на бренды...");
-  await page.waitForSelector(".tagList a", { timeout: 30000 });
+  await page.waitForSelector(".tagList a", { timeout: 10000 });
 
   const brandLinks = await page.$$eval(".tagList a", (elements) =>
       elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
@@ -29,12 +29,12 @@ async function* scrapeListings(context) { // ✅ Принимаем контек
       const brandPage = await context.newPage(); // ✅ Открываем новую вкладку в общем контексте
 
       try {
-          await brandPage.goto(fullBrandUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+          await brandPage.goto(fullBrandUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
 
           let currentPage = 1;
           while (true) {
               console.log(`📄 Загружаем страницу ${currentPage} для бренда ${fullBrandUrl}...`);
-              await brandPage.waitForSelector('[data-testid^="listing-"]', { timeout: 30000 });
+              await brandPage.waitForSelector('[data-testid^="listing-"]', { timeout: 5000 });
 
               const links = await brandPage.$$eval("[data-testid^='listing-']", (elements) =>
                   elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
@@ -64,7 +64,7 @@ async function* scrapeListings(context) { // ✅ Принимаем контек
               }
 
               console.log(`➡️ Переход на страницу ${nextPageNumber} для бренда ${fullBrandUrl}...`);
-              await brandPage.goto(`${fullBrandUrl}?page=${nextPageNumber}`, { waitUntil: "domcontentloaded", timeout: 90000 });
+              await brandPage.goto(`${fullBrandUrl}?page=${nextPageNumber}`, { waitUntil: "domcontentloaded", timeout: 10000 });
               currentPage = nextPageNumber;
           }
       } catch (error) {

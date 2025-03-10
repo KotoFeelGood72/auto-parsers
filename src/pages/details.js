@@ -29,7 +29,7 @@ async function scrapeCarDetails(url, context, attempt = 0) {
     try {
       await page.goto(url, {
         waitUntil: "domcontentloaded",
-        timeout: 60000,
+        timeout: 5000,
       });
     } catch (error) {
       if (error.name === "TimeoutError") {
@@ -109,7 +109,7 @@ await page.waitForFunction(
       modal && modal.querySelectorAll(".MuiImageList-root img").length > 0
     );
   },
-  { timeout: 5000, state: "attached" }
+  { timeout: 2000, state: "attached" }
 );
 
 // 🔹 Собираем изображения
