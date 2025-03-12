@@ -14,7 +14,7 @@ async function scrapeCarDetails(url) {
 
     await page.goto(url, {
       waitUntil: "domcontentloaded",
-      timeout: 90000,
+      timeout: 45000,
     });
 
     console.log("📄 Загружаем данные...");
@@ -22,7 +22,7 @@ async function scrapeCarDetails(url) {
     await page.waitForFunction(() => {
       const elem = document.querySelector('[data-testid="listing-price"]');
       return elem && elem.innerText.trim().length > 0;
-   }, { timeout: 60000 });
+   }, { timeout: 5000 });
 
     const title = await page.$eval(
       '[data-testid="listing-sub-heading"]',
@@ -51,7 +51,7 @@ async function scrapeCarDetails(url) {
       (el) => el.innerText.trim()
     );
     const motorsTrim = await page.$eval(
-      '[data-testid="overview-fuel_type-value"]',
+      '[data-testid="overview-transmission_type-value"]',
       (el) => el.innerText.trim()
     );
     const kilometers = await page.$eval(
@@ -87,7 +87,7 @@ let sellerProfileLink = null;
 
 try {
   console.log("⌛ Ожидаем загрузку блока продавца...");
-  await page.waitForSelector('[data-testid="name"]', { timeout: 30000 });
+  await page.waitForSelector('[data-testid="name"]', { timeout: 5000 });
 
   sellerName = await page.$eval(
     '[data-testid="name"]',
@@ -161,7 +161,7 @@ try {
       const phoneNumberLocator = modal.locator(
         '[data-testid="phone-number"] p'
       );
-      await phoneNumberLocator.waitFor({ state: "visible", timeout: 15000 });
+      await phoneNumberLocator.waitFor({ state: "visible", timeout: 5000 });
 
       // Считываем текст
       phoneNumber = await phoneNumberLocator.innerText();
@@ -180,7 +180,7 @@ try {
 
     // 🔹 Кликаем по первому `.MuiImageListItem-standard`
     const mainImageSelector = ".MuiImageListItem-standard";
-    await page.waitForSelector(mainImageSelector, { timeout: 20000 });
+    await page.waitForSelector(mainImageSelector, { timeout: 10000 });
 
     let clicked = false;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -213,7 +213,7 @@ try {
     console.log("📸 Кликнули, ждем загрузки модалки...");
 
     // 🔹 Ждем появления модального окна
-    await page.waitForSelector(".MuiModal-root", { timeout: 15000 });
+    await page.waitForSelector(".MuiModal-root", { timeout: 5000 });
 
     // 🔹 Проверяем, загрузились ли изображения в модалке
     await page.waitForFunction(
@@ -223,7 +223,7 @@ try {
           modal && modal.querySelectorAll(".MuiImageList-root img").length > 0
         );
       },
-      { timeout: 45000 }
+      { timeout: 5000 }
     );
 
     // 🔹 Собираем изображения
