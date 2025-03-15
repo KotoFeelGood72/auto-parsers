@@ -17,4 +17,4 @@ COPY . .
 EXPOSE 3000
 
 # Запускаем парсер
-CMD ["npm", "start"]
+CMD ["node", "src/index.js"]
