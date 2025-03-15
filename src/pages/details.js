@@ -1,5 +1,18 @@
 const { startBrowser } = require("../utils/browser");
 
+const { exec } = require("child_process");
+
+async function killChromium() {
+    console.log("🛑 Принудительное завершение Chromium...");
+    exec("pkill -9 -f chromium", (error, stdout, stderr) => {
+        if (error) {
+            console.error("Ошибка при закрытии Chromium:", error);
+        } else {
+            console.log("✅ Chromium закрыт.");
+        }
+    });
+}
+
 async function scrapeCarDetails(url) {
   const browser = await startBrowser();
   const page = await browser.newPage();
@@ -283,8 +296,11 @@ try {
     }
     return null;
   } finally {
+    console.log(`🛑 Закрываем браузер для ${url}...`);
     await browser.close();
-  }
+    await killChromium()
+    console.log(`✅ Браузер закрыт для ${url}.`);
+}
 }
 
 module.exports = { scrapeCarDetails };
