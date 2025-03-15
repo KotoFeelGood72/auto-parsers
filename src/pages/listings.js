@@ -1,10 +1,9 @@
-const { startBrowser } = require("../utils/browser");
 
-async function* scrapeListings() {
+
+async function* scrapeListings(browser) {
   let attempt = 0;
   
   while (attempt < 3) {  // 🔄 Даем 3 попытки
-    const browser = await startBrowser();
     const page = await browser.newPage();
 
     try {

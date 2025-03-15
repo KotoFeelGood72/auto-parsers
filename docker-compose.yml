@@ -19,7 +19,7 @@ services:
   parser:
     build: .
     container_name: car_parser
-    restart: no
+    restart: always
     depends_on:
       - db
     environment:

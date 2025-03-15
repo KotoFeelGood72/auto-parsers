@@ -1,4 +1,4 @@
-const { startBrowser } = require("../utils/browser");
+
 
 const { exec } = require("child_process");
 
@@ -13,10 +13,8 @@ async function killChromium() {
     });
 }
 
-async function scrapeCarDetails(url) {
-  const browser = await startBrowser();
+async function scrapeCarDetails(url, browser) {
   const page = await browser.newPage();
-
   try {
     console.log(`🚗 Переходим к ${url}`);
 
@@ -27,7 +25,7 @@ async function scrapeCarDetails(url) {
 
     await page.goto(url, {
       waitUntil: "domcontentloaded",
-      timeout: 45000,
+      timeout: 10000,
     });
 
     console.log("📄 Загружаем данные...");
@@ -184,7 +182,7 @@ try {
       const closeButton = modal.locator('[data-testid="close-button"]');
       if ((await closeButton.count()) > 0) {
         await closeButton.click();
-        await page.waitForTimeout(20000);
+        await page.waitForTimeout(5000);
         console.log("✅ Модальное окно закрыто.");
       }
     } else {
@@ -296,10 +294,7 @@ try {
     }
     return null;
   } finally {
-    console.log(`🛑 Закрываем браузер для ${url}...`);
-    await browser.close();
-    await killChromium()
-    console.log(`✅ Браузер закрыт для ${url}.`);
+    await page.close();
 }
 }
 
