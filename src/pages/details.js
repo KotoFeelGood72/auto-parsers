@@ -1,6 +1,4 @@
 const { extractText } = require("./details/extractText");
-const { extractSellerDetails } = require("./details/extractSellerDetails");
-const { extractPhoneNumber } = require("./details/extractPhoneNumber");
 
 async function scrapeCarDetails(url, context) {
   const page = await context.newPage();
@@ -15,63 +13,62 @@ async function scrapeCarDetails(url, context) {
     });
 
     await page.goto(url, {
-      waitUntil: "domcontentloaded", // Ждем, пока загрузятся все запросы
+      waitUntil: "domcontentloaded",
       timeout: 10000,
     });
 
     console.log("📄 Загружаем данные...");
 
-    // Дожидаемся появления цены, иначе страница могла не прогрузиться
-    await page
-      .waitForSelector('[data-testid="listing-price"]')
-      .catch(() => console.warn("⚠️ Не удалось дождаться загрузки цены"));
-
-    // 🔹 Оптимизированный парсинг характеристик
     const fields = [
       {
         key: "title",
-        selector: '[data-testid="listing-sub-heading"]',
+        selector: "h1",
         default: "Не указано",
       },
       {
         key: "year",
-        selector: '[data-testid="listing-year-value"]',
+        selector: ".mileage .item:nth-child(1) .mileage_text",
         default: "Не указано",
       },
       {
         key: "body_type",
-        selector: '[data-testid="overview-body_type-value"]',
+        selector:
+          ".features-list .feature-list__item:nth-child(9) .feature-value",
         default: "Не указано",
       },
       {
-        key: "horsepower",
-        selector: '[data-testid="overview-horsepower-value"]',
+        key: "drivetype",
+        selector:
+          ".features-list .feature-list__item:nth-child(5) .feature-value",
         default: "Не указано",
       },
       {
         key: "fuel_type",
-        selector: '[data-testid="overview-fuel_type-value"]',
+        selector:
+          ".features-list .feature-list__item:nth-child(11) .feature-value",
         default: "Не указано",
       },
       {
         key: "kilometers",
-        selector: '[data-testid="listing-kilometers-value"]',
+        selector: ".mileage .item:nth-child(2) .mileage_text",
         default: "0",
         sanitize: (v) => v.replace(/\D/g, ""),
       },
       {
         key: "exterior_color",
-        selector: '[data-testid="overview-exterior_color-value"]',
+        selector:
+          ".features-list .feature-list__item:nth-child(8) .feature-value",
         default: "Не указано",
       },
       {
         key: "location",
-        selector: '[data-testid="listing-location-map"]',
+        selector: "#location_text",
         default: "Не указано",
       },
       {
         key: "motors_trim",
-        selector: '[data-testid="overview-engine_capacity_cc-value"]',
+        selector:
+          ".features-list .feature-list__item:nth-child(7) .feature-value",
         default: "Не указано",
       },
     ];
@@ -87,112 +84,109 @@ async function scrapeCarDetails(url, context) {
       }
     }
 
-    // 🔹 Обработка `make` и `model`
-    const titleParts = carDetails.title.split(" ");
-    carDetails.make = titleParts[0] || "Не указано";
-    carDetails.model = titleParts[1] || "Не указано";
-
-    // 🔹 Обработка цены
+    // 🔹 Сбор только data-src из недублированных слайдов
     try {
-      const priceFormatted = await extractText(
-        page,
-        '[data-testid="listing-price"] span'
-      );
-      carDetails.price = {
-        formatted: priceFormatted,
-        raw:
-          parseFloat(
-            priceFormatted.replace(/,/g, "").replace("AED", "").trim()
-          ) || 0,
-        currency: "AED",
-      };
-    } catch {
-      carDetails.price = { formatted: "0", raw: 0, currency: "AED" };
-    }
+      await page.waitForSelector(".swiper-slide img", { timeout: 7000 });
 
-    // 🔹 Продавец
-    try {
-      carDetails.sellers = await extractSellerDetails(page);
-    } catch {
-      carDetails.sellers = {
-        name: "Не указан",
-        type: "Частное лицо",
-        logo: null,
-        profileLink: null,
-      };
-    }
-
-    // 🔹 Телефон
-    try {
-      carDetails.contact.phone = await extractPhoneNumber(page);
-    } catch {
-      carDetails.contact.phone = "Не указан";
-    }
-
-    // 🔹 Обработка изображений
-    try {
-      const mainImageSelector = ".MuiImageListItem-standard";
-      await page.waitForSelector(mainImageSelector, { timeout: 1000 });
-
-      let clicked = false;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        console.log(`📸 Попытка клика #${attempt + 1}...`);
-
-        const mainImage = await page.$(mainImageSelector);
-        if (!mainImage) {
-          console.warn("⚠️ Главное изображение исчезло, пробуем заново...");
-          await page.waitForTimeout(1000);
-          continue;
-        }
-
-        try {
-          await mainImage.hover();
-          await page.waitForTimeout(500);
-          await mainImage.click({ delay: 200 });
-          clicked = true;
-          break;
-        } catch (error) {
-          console.warn("⚠️ Элемент изменился, пробуем снова...");
-          await page.waitForTimeout(1000);
-        }
-      }
-
-      if (clicked) {
-        console.log("📸 Кликнули, ждем загрузки модалки...");
-        await page.waitForSelector(".MuiModal-root", { timeout: 15000 });
-
-        await page.waitForFunction(
-          () => {
-            const modal = document.querySelector(".MuiModal-root");
-            return (
-              modal &&
-              modal.querySelectorAll(".MuiImageList-root img").length > 0
-            );
-          },
-          { timeout: 3000 }
+      carDetails.photos = await page.evaluate(() => {
+        const slides = document.querySelectorAll(
+          ".swiper-slide:not(.swiper-slide-duplicate) img"
         );
+        const urls = new Set();
 
-        // 🔹 Собираем изображения
-        carDetails.photos = await page.evaluate(() => {
-          return Array.from(
-            document.querySelectorAll(".MuiModal-root .MuiImageList-root img")
-          )
-            .map((img) => img.src)
-            .filter(
-              (src) =>
-                src.includes(".jpeg") ||
-                src.includes(".jpg") ||
-                src.includes(".png")
-            );
+        slides.forEach((img) => {
+          const src = img.getAttribute("data-src");
+          if (src) {
+            urls.add(src.startsWith("//") ? "https:" + src : src);
+          }
         });
 
-        console.log(`📸 Собрано изображений: ${carDetails.photos.length}`);
-      }
-    } catch (error) {
-      console.warn("⚠️ Ошибка при загрузке изображений:", error);
+        return Array.from(urls);
+      });
+
+      console.log(`📸 Найдено изображений: ${carDetails.photos.length}`);
+    } catch (err) {
+      console.warn("⚠️ Ошибка при сборе изображений:", err.message);
     }
 
-    console.log(carDetails);
+    const knownMakes = [
+      "Alfa Romeo",
+      "Aston Martin",
+      "Audi",
+      "Bentley",
+      "BMW",
+      "Bugatti",
+      "Cadillac",
+      "Chevrolet",
+      "Chrysler",
+      "Citroen",
+      "Dacia",
+      "Daewoo",
+      "Daihatsu",
+      "Dodge",
+      "Ferrari",
+      "Fiat",
+      "Ford",
+      "GMC",
+      "Geely",
+      "Genesis",
+      "Honda",
+      "Hummer",
+      "Hyundai",
+      "Infiniti",
+      "Isuzu",
+      "Jaguar",
+      "Jeep",
+      "Kia",
+      "Lada",
+      "Lamborghini",
+      "Lancia",
+      "Land Rover",
+      "Lexus",
+      "Lincoln",
+      "Maserati",
+      "Mazda",
+      "McLaren",
+      "Mercedes-Benz",
+      "Mini",
+      "Mitsubishi",
+      "Nissan",
+      "Opel",
+      "Peugeot",
+      "Pontiac",
+      "Porsche",
+      "Renault",
+      "Rolls Royce",
+      "Rover",
+      "Saab",
+      "Seat",
+      "Skoda",
+      "Smart",
+      "SsangYong",
+      "Subaru",
+      "Suzuki",
+      "Tesla",
+      "Toyota",
+      "Volkswagen",
+      "Volvo",
+      "Range Rover",
+    ];
+
+    const getMakeFromTitle = (title) => {
+      if (!title || typeof title !== "string") return "Неизвестно";
+
+      const normalizedTitle = title.toLowerCase();
+
+      const foundMake = knownMakes.find((make) =>
+        normalizedTitle.startsWith(make.toLowerCase())
+      );
+
+      return foundMake || "Неизвестно";
+    };
+
+    // 🏷️ Извлекаем марку из заголовка
+    carDetails.make = getMakeFromTitle(carDetails.title);
+
     return carDetails;
   } catch (error) {
     console.error(`❌ Ошибка при загрузке данных с ${url}:`, error);
