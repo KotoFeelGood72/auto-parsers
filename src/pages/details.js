@@ -1,273 +1,78 @@
-
-
-const { exec } = require("child_process");
-
-async function killChromium() {
-    console.log("🛑 Принудительное завершение Chromium...");
-    exec("pkill -9 -f chromium", (error, stdout, stderr) => {
-        if (error) {
-            console.error("Ошибка при закрытии Chromium:", error);
-        } else {
-            console.log("✅ Chromium закрыт.");
-        }
-    });
-}
-
 async function scrapeCarDetails(url, browser) {
   const page = await browser.newPage();
+
   try {
     console.log(`🚗 Переходим к ${url}`);
 
     await page.setExtraHTTPHeaders({
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
 
-    await page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: 10000,
-    });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    console.log("📄 Загружаем данные...");
+    console.log("⏳ Ждем загрузку страницы...");
+    await page.waitForSelector(".car-title", { timeout: 15000 });
 
-    await page.waitForFunction(() => {
-      const elem = document.querySelector('[data-testid="listing-price"]');
-      return elem && elem.innerText.trim().length > 0;
-   }, { timeout: 5000 });
-
-    const title = await page.$eval(
-      '[data-testid="listing-sub-heading"]',
-      (el) => el.innerText.trim()
-    );
-    const make = await page.$eval('[data-testid="listing-sub-heading"]', (el) =>
-      el.innerText.split(" ")[0].trim()
-    );
-    const model = await page.$eval(
-      '[data-testid="listing-sub-heading"]',
-      (el) => el.innerText.split(" ")[1].trim()
-    );
-    const year = await page.$eval('[data-testid="listing-year-value"]', (el) =>
-      el.innerText.trim()
-    );
-    const bodyType = await page.$eval(
-      '[data-testid="overview-body_type-value"]',
-      (el) => el.innerText.trim()
-    );
-    const horsepower = await page.$eval(
-      '[data-testid="overview-horsepower-value"]',
-      (el) => el.innerText.trim()
-    );
-    const fuelType = await page.$eval(
-      '[data-testid="overview-fuel_type-value"]',
-      (el) => el.innerText.trim()
-    );
-    const motorsTrim = await page.$eval(
-      '[data-testid="overview-transmission_type-value"]',
-      (el) => el.innerText.trim()
-    );
-    const kilometers = await page.$eval(
-      '[data-testid="listing-kilometers-value"]',
-      (el) => el.innerText.trim().replace(/\D/g, "")
-    );
-    const exteriorColor = await page.$eval(
-      '[data-testid="overview-exterior_color-value"]',
-      (el) => el.innerText.trim()
-    );
-    const location = await page.$eval(
-      '[data-testid="listing-location-map"]',
-      (el) => el.innerText.trim()
-    );
-
-    const priceFormatted = await page.$eval(
-      '[data-testid="listing-price"] span',
-      (el) => el.innerText.trim().replace("AED", "").trim()
-    );
-    const priceRaw = parseFloat(priceFormatted.replace(/,/g, ""));
-    const currency = "AED";
-
-    const shortUrl = url;
-
-    let phoneNumber = null;
-
-
-// Парсим информацию о продавце
-let sellerName = "Не указан";
-let sellerType = "Частное лицо";
-let sellerLogo = null;
-let sellerProfileLink = null;
-
-try {
-  console.log("⌛ Ожидаем загрузку блока продавца...");
-  await page.waitForSelector('[data-testid="name"]', { timeout: 5000 });
-
-  sellerName = await page.$eval(
-    '[data-testid="name"]',
-    (el) => el.innerText.trim()
-  );
-
-  sellerType = await page.$eval(
-    '[data-testid="type"]',
-    (el) => el.innerText.trim()
-  );
-
-  sellerLogo = await page.$eval('[data-testid="logo"] img', (el) => el.src);
-
-  const sellerProfileElement = await page.$('[data-testid="view-all-cars"]');
-  if (sellerProfileElement) {
-    sellerProfileLink = await page.$eval(
-      '[data-testid="view-all-cars"]',
-      (el) => el.href
-    );
-  }
-
-  console.log(`🏢 Продавец: ${sellerName} (${sellerType})`);
-} catch (error) {
-  console.warn("⚠️ Ошибка при получении данных о продавце:", error);
-}
-
-    // Берём первый локатор кнопки "Call"
-    const callButton = page.locator('[data-testid="call-cta-button"]').first();
-
-    // Проверяем, есть ли хоть одна кнопка
-    const callButtonCount = await callButton.count();
-
-    if (callButtonCount > 0) {
-      console.log(
-        `📞 Найдено ${callButtonCount} кнопок вызова. Кликаем по первой...`
-      );
-
-      let clicked = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          console.log(`🔄 Попытка ${attempt}...`);
-
-          // Иногда можно явно проскроллить (но Playwright и так скроллит при клике):
-          await callButton.scrollIntoViewIfNeeded();
-          await page.waitForTimeout(2000);
-
-          // Кликаем
-          await callButton.click();
-          clicked = true;
-          console.log("✅ Успешно кликнули по кнопке 'Call'");
-          break;
-        } catch (error) {
-          console.warn(`⚠️ Попытка ${attempt} не удалась. Ошибка:`, error);
-          await page.waitForTimeout(2000);
-        }
-      }
-
-      if (!clicked) {
-        console.error(
-          "🚨 Не удалось кликнуть по кнопке 'Call' даже за 3 попытки!"
-        );
-        return;
-      }
-
-      console.log("⌛ Ждем появления модального окна...");
-      const modal = page.locator(".MuiDialog-container");
-      await modal.waitFor({ state: "visible", timeout: 10000 });
-      console.log("✅ Модальное окно найдено!");
-
-      // Ожидаем появления номера телефона
-      const phoneNumberLocator = modal.locator(
-        '[data-testid="phone-number"] p'
-      );
-      await phoneNumberLocator.waitFor({ state: "visible", timeout: 5000 });
-
-      // Считываем текст
-      phoneNumber = await phoneNumberLocator.innerText();
-      console.log(`📞 Получен номер телефона: ${phoneNumber}`);
-
-      // Закрываем модальное окно (если нужно)
-      const closeButton = modal.locator('[data-testid="close-button"]');
-      if ((await closeButton.count()) > 0) {
-        await closeButton.click();
-        await page.waitForTimeout(5000);
-        console.log("✅ Модальное окно закрыто.");
-      }
-    } else {
-      console.warn("⚠️ Кнопка вызова не найдена, пропускаем...");
-    }
-
-    // 🔹 Кликаем по первому `.MuiImageListItem-standard`
-    const mainImageSelector = ".MuiImageListItem-standard";
-    await page.waitForSelector(mainImageSelector, { timeout: 10000 });
-
-    let clicked = false;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      // 3 попытки клика
-      console.log(`📸 Попытка клика #${attempt + 1}...`);
-
-      const mainImage = await page.$(mainImageSelector);
-      if (!mainImage) {
-        console.warn("⚠️ Главное изображение исчезло, пробуем заново...");
-        await page.waitForTimeout(1000);
-        continue;
-      }
-
+    async function safeEval(page, selector, callback) {
       try {
-        await mainImage.hover();
-        await page.waitForTimeout(500);
-        await mainImage.click({ delay: 200 });
-        clicked = true;
-        break;
+        return await page.$eval(selector, callback);
       } catch (error) {
-        console.warn("⚠️ Элемент изменился, пробуем снова...");
-        await page.waitForTimeout(1000);
+        return null;
       }
     }
 
-    if (!clicked) {
-      throw new Error("🚨 Не удалось кликнуть на главное изображение!");
-    }
+    console.log("📄 Парсим данные...");
 
-    console.log("📸 Кликнули, ждем загрузки модалки...");
+    const title = await safeEval(page, ".car-title", el => el.textContent.trim());
 
-    // 🔹 Ждем появления модального окна
-    await page.waitForSelector(".MuiModal-root", { timeout: 5000 });
+    const priceFormatted = await safeEval(page, "div.price.currency-price-field", el => el.textContent.replace(/[^\d,]/g, "").trim());
+    const priceRaw = priceFormatted ? parseFloat(priceFormatted.replace(/,/g, "").replace(/\s/g, "")) : null;
+    const currency = "USD";
 
-    // 🔹 Проверяем, загрузились ли изображения в модалке
-    await page.waitForFunction(
-      () => {
-        const modal = document.querySelector(".MuiModal-root");
-        return (
-          modal && modal.querySelectorAll(".MuiImageList-root img").length > 0
-        );
-      },
-      { timeout: 5000 }
-    );
-
-    // 🔹 Собираем изображения
-    const photos = await page.evaluate(() => {
-      return Array.from(
-        document.querySelectorAll(".MuiModal-root .MuiImageList-root img")
-      )
-        .map((img) => img.src)
-        .filter(
-          (src) =>
-            src.includes(".jpeg") ||
-            src.includes(".jpg") ||
-            src.includes(".png")
-        );
+    const year = await safeEval(page, '#item-specifications ul li:nth-child(2) span:nth-child(3)', el => el.textContent.trim());
+    const kilometers = await safeEval(page, '#item-specifications ul li:nth-child(3) span:nth-child(3)', el => el.textContent.trim());
+    const fuel_type = await page.$$eval('#item-specifications ul li', (elements) => {
+      const el = elements.find(el => el.innerText.includes('Fuel Type'));
+      return el ? el.querySelector('span:last-child')?.textContent.trim() : null;
     });
 
-    console.log(`📸 Собрано изображений: ${photos.length}`);
+    const make = await page.$$eval('#item-specifications ul li', (elements) => {
+      const el = elements.find(el => el.innerText.includes('Make'));
+      return el ? el.querySelector('span:last-child')?.textContent.trim() : null;
+    });
+
+    const model = await page.$$eval('#item-specifications ul li', (elements) => {
+      const el = elements.find(el => el.innerText.includes('Model'));
+      return el ? el.querySelector('span:last-child')?.textContent.trim() : null;
+    });
+
+    const photos = await page.$$eval('#car-images-slider img', imgs =>
+      imgs.map(img => img.src.startsWith('//') ? 'https:' + img.src : img.src)
+    );
+
+    const sellerName = await safeEval(page, "#seller-info .seller-intro strong", el => el.textContent.trim());
+    const sellerLogo = await safeEval(page, "#seller-info .seller-intro img", img => img.src.startsWith('//') ? 'https:' + img.src : img.src);
+    const sellerProfileLink = await safeEval(page, "#seller-info .links li a", a => a.href);
+
+    const whatsappHref = await safeEval(page, 'a.whatsapp-link', a => a.href);
+    const phoneMatch = whatsappHref ? whatsappHref.match(/phone=(\d+)/) : null;
+    const phone = phoneMatch ? `+${phoneMatch[1]}` : "Не указан";
 
     const carDetails = {
-      short_url: shortUrl,
+      short_url: url,
       title,
       photos,
-      make,
-      model,
+      make: make || null,
+      model: model || null,
       year,
-      body_type: bodyType,
-      horsepower,
-      fuel_type: fuelType,
-      motors_trim: motorsTrim,
+      body_type: null,
+      horsepower: null,
+      fuel_type,
+      motors_trim: null,
       kilometers,
       sellers: {
         sellerName: sellerName || "Не указан",
-        sellerType: sellerType || "Частное лицо",
+        sellerType: "Dealer",
         sellerLogo: sellerLogo || null,
         sellerProfileLink: sellerProfileLink || null,
       },
@@ -276,26 +81,22 @@ try {
         raw: priceRaw,
         currency,
       },
-      exterior_color: exteriorColor,
-      location,
+      exterior_color: null,
+      location: "Dubai",
       contact: {
-        phone: phoneNumber || "Не указан",
+        phone,
       },
     };
 
     console.log(carDetails);
     return carDetails;
   } catch (error) {
-    console.error(`❌ Ошибка при загрузке данных с ${url}:`, error);
-    if (attempt < 2) {
-      console.log("🔄 Перезапуск браузера и повторная попытка...");
-      await browser.close();
-      return await scrapeCarDetails(url, attempt + 1);
-    }
+    console.error(`❌ Ошибка при загрузке ${url}:`, error);
     return null;
   } finally {
     await page.close();
-}
+    console.log("🛑 Страница закрыта.");
+  }
 }
 
 module.exports = { scrapeCarDetails };
