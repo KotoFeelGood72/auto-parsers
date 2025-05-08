@@ -8,10 +8,15 @@ async function scrapeCarDetails(url, browser) {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
 
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000
+    });
 
     console.log("⏳ Ждем загрузку страницы...");
-    await page.waitForSelector(".car-title", { timeout: 15000 });
+    await page.waitForSelector(".car-title", {
+      timeout: 15000
+    });
 
     async function safeEval(page, selector, callback) {
       try {
@@ -30,7 +35,11 @@ async function scrapeCarDetails(url, browser) {
     const currency = "USD";
 
     const year = await safeEval(page, '#item-specifications ul li:nth-child(2) span:nth-child(3)', el => el.textContent.trim());
-    const kilometers = await safeEval(page, '#item-specifications ul li:nth-child(3) span:nth-child(3)', el => el.textContent.trim());
+    const kilometers = await safeEval(page, '#highlights ul .tac:nth-child(3) span:nth-child(3)', el => el.textContent.trim());
+    const motors_trim = await safeEval(page, '#highlights ul .tac:nth-child(4) span:nth-child(3)', el => el.textContent.trim());
+    const exterior_color = await safeEval(page, '.faq__data .fd-col:nth-child(11) span:nth-child(2)', el => el.textContent.trim());
+    const horsepower = await safeEval(page, '.faq__data .fd-col:nth-child(14) span:nth-child(2)', el => el.textContent.trim());
+    const body_type = await safeEval(page, '.faq__data .fd-col:nth-child(18) span:nth-child(2)', el => el.textContent.trim());
     const fuel_type = await page.$$eval('#item-specifications ul li', (elements) => {
       const el = elements.find(el => el.innerText.includes('Fuel Type'));
       return el ? el.querySelector('span:last-child')?.textContent.trim() : null;
@@ -65,11 +74,11 @@ async function scrapeCarDetails(url, browser) {
       make: make || null,
       model: model || null,
       year,
-      body_type: null,
-      horsepower: null,
+      body_type: body_type,
+      horsepower: horsepower,
       fuel_type,
-      motors_trim: null,
-      kilometers,
+      motors_trim: motors_trim,
+      kilometers: kilometers,
       sellers: {
         sellerName: sellerName || "Не указан",
         sellerType: "Dealer",
@@ -81,7 +90,7 @@ async function scrapeCarDetails(url, browser) {
         raw: priceRaw,
         currency,
       },
-      exterior_color: null,
+      exterior_color: exterior_color,
       location: "Dubai",
       contact: {
         phone,
@@ -99,4 +108,6 @@ async function scrapeCarDetails(url, browser) {
   }
 }
 
-module.exports = { scrapeCarDetails };
+module.exports = {
+  scrapeCarDetails
+};
