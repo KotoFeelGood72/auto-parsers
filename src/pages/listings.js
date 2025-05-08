@@ -1,83 +1,57 @@
-
-
 async function* scrapeListings(browser) {
   let attempt = 0;
-  
-  while (attempt < 3) {  // 🔄 Даем 3 попытки
+
+  while (attempt < 3) {
     const page = await browser.newPage();
 
     try {
       console.log("🔍 Открываем главную страницу каталога...");
+
       await page.setExtraHTTPHeaders({
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       });
 
-      await page.goto("https://uae.dubizzle.com/motors/used-cars/", {
-        waitUntil: "domcontentloaded",
-        timeout: 90000,
-      });
+      let currentPage = 1;
 
-      console.log("📄 Собираем ссылки на бренды...");
-      await page.waitForSelector(".tagList a", { timeout: 30000 });
+      while (true) {
+        const url = `https://ae.opensooq.com/en/cars/cars-for-sale/?page=${currentPage}`;
+        console.log(`📄 Загружаем страницу: ${url}`);
 
-      const brandLinks = await page.$$eval(".tagList a", (elements) =>
-        elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
-      );
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-      console.log(`✅ Найдено ${brandLinks.length} брендов. Начинаем парсинг...`);
+        await page.waitForSelector('a.postListItemData', { timeout: 30000 });
 
-      for (const brandLink of brandLinks) {
-        const fullBrandUrl = `https://uae.dubizzle.com${brandLink}`;
-        console.log(`🚗 Переход в бренд: ${fullBrandUrl}`);
-        await page.goto(fullBrandUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+        const carLinks = await page.$$eval('a.postListItemData', (elements) =>
+          elements
+            .map((el) => el.getAttribute("href"))
+            .filter((href) => href && href.startsWith("/en/search/"))
+        );
 
-        let currentPage = 1;
-        while (true) {
-          console.log(`📄 Загружаем страницу ${currentPage} для бренда ${fullBrandUrl}...`);
-          await page.waitForSelector('[data-testid^="listing-"]', { timeout: 30000 });
-
-          const links = await page.$$eval("[data-testid^='listing-']", (elements) =>
-            elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
-          );
-
-          for (const link of links) {
-            yield `https://uae.dubizzle.com${link}`;
-          }
-
-          console.log(`✅ Страница ${currentPage}: найдено ${links.length} объявлений`);
-
-          const nextButton = await page.$('[data-testid="page-next"]');
-          if (!nextButton) {
-            console.log("🏁 Достигнута последняя страница бренда. Возвращаемся к списку брендов.");
-            break;
-          }
-
-          const nextPageNumber = await page.$eval('[data-testid="page-next"]', (el) => {
-            const href = el.getAttribute("href");
-            const match = href.match(/page=(\d+)/);
-            return match ? parseInt(match[1], 10) : null;
-          });
-
-          if (!nextPageNumber || nextPageNumber <= currentPage) {
-            console.log("🏁 Больше страниц нет. Возвращаемся к списку брендов.");
-            break;
-          }
-
-          console.log(`➡️ Переход на страницу ${nextPageNumber} для бренда ${fullBrandUrl}...`);
-          await page.goto(`${fullBrandUrl}?page=${nextPageNumber}`, { waitUntil: "domcontentloaded", timeout: 90000 });
-          currentPage = nextPageNumber;
+        if (carLinks.length === 0) {
+          console.log(`🏁 На странице ${currentPage} нет объявлений. Завершаем.`);
+          break;
         }
+
+        console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
+
+        for (const link of carLinks) {
+          yield `https://ae.opensooq.com${link}`;
+        }
+
+        console.log(`➡️ Переход к следующей странице: ${currentPage + 1}`);
+        currentPage++;
       }
-      return;  // ✅ Если все прошло успешно, выходим из цикла
+
+      return;
 
     } catch (error) {
-      console.error(`❌ Ошибка при парсинге объявлений (попытка ${attempt + 1}):`, error);
+      console.error(`❌ Ошибка при парсинге (попытка ${attempt + 1}):`, error);
       attempt++;
-      console.log("🔄 Перезапуск браузера...");
+      console.log("🔄 Перезапуск страницы...");
     } finally {
-      await browser.close();
-      console.log("🛑 Браузер закрыт.");
+      await page.close();
+      console.log("🛑 Страница закрыта.");
     }
   }
 
