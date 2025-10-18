@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { scrapeListings } = require("./pages/listings");
 const { scrapeCarDetails } = require("./pages/details");
 const { saveData } = require("./utils/saveData");
