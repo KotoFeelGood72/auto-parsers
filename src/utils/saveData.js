@@ -3,6 +3,9 @@ const path = require("path");
 const pool = require("../db");
 
 async function saveData(carDetails) {
+    console.log("🔍 Получены данные для сохранения:");
+    console.log(JSON.stringify(carDetails, null, 2));
+    
     if (!carDetails || !carDetails.short_url) {
         console.error("❌ Ошибка: Данные пустые или невалидные!");
         return;
@@ -71,6 +74,29 @@ async function saveData(carDetails) {
             carDetails.sellers?.sellerLogo || null,
             carDetails.sellers?.sellerProfileLink || null,
         ];
+
+        // Подробное логирование данных перед записью
+        console.log("📝 Данные для записи в БД:");
+        console.log(`   URL: ${values[0]}`);
+        console.log(`   Название: ${values[1]}`);
+        console.log(`   Марка: ${values[2]}`);
+        console.log(`   Модель: ${values[3]}`);
+        console.log(`   Год: ${values[4]}`);
+        console.log(`   Тип кузова: ${values[5]}`);
+        console.log(`   Мощность: ${values[6]}`);
+        console.log(`   Тип топлива: ${values[7]}`);
+        console.log(`   Комплектация: ${values[8]}`);
+        console.log(`   Пробег: ${values[9]}`);
+        console.log(`   Цена (формат): ${values[10]}`);
+        console.log(`   Цена (число): ${values[11]}`);
+        console.log(`   Валюта: ${values[12]}`);
+        console.log(`   Цвет: ${values[13]}`);
+        console.log(`   Локация: ${values[14]}`);
+        console.log(`   Телефон: ${values[15]}`);
+        console.log(`   Продавец: ${values[16]}`);
+        console.log(`   Тип продавца: ${values[17]}`);
+        console.log(`   Логотип: ${values[18]}`);
+        console.log(`   Профиль: ${values[19]}`);
 
         const res = await client.query(upsertCarQuery, values);
         const listingId = res.rows[0].id;
