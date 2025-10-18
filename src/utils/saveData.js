@@ -1,8 +1,5 @@
-
-
-
-
-
+const fs = require("fs");
+const path = require("path");
 const pool = require("../db");
 
 async function saveData(carDetails) {
@@ -11,9 +8,14 @@ async function saveData(carDetails) {
         return;
     }
 
-    const client = await pool.connect();
+    // Если нет настроек БД — сохраняем в файл
+    if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME) {
+        return saveToFile(carDetails);
+    }
 
+    let client;
     try {
+        client = await pool.connect();
         await client.query("BEGIN");
 
         const upsertCarQuery = `
@@ -93,11 +95,49 @@ async function saveData(carDetails) {
 
         await client.query("COMMIT");
     } catch (error) {
-        await client.query("ROLLBACK");
+        if (client) {
+            try { await client.query("ROLLBACK"); } catch (_) {}
+        }
         console.error("❌ Ошибка записи в базу данных:", error);
+        console.warn("💾 Перехожу на файловое сохранение (data/dubizzle_cars.json)");
+        return saveToFile(carDetails);
     } finally {
-        client.release();
+        if (client) client.release();
     }
 }
 
 module.exports = { saveData };
+
+// === Файловый фолбэк ===
+async function saveToFile(carDetails) {
+    try {
+        const dataDir = path.join(__dirname, "..", "..", "data");
+        const filePath = path.join(dataDir, "dubizzle_cars.json");
+
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+
+        let items = [];
+        if (fs.existsSync(filePath)) {
+            try {
+                const raw = fs.readFileSync(filePath, "utf-8");
+                items = JSON.parse(raw || "[]");
+            } catch (_) {
+                items = [];
+            }
+        }
+
+        const existingIndex = items.findIndex(x => x.short_url === carDetails.short_url);
+        if (existingIndex >= 0) {
+            items[existingIndex] = carDetails;
+        } else {
+            items.push(carDetails);
+        }
+
+        fs.writeFileSync(filePath, JSON.stringify(items, null, 2), "utf-8");
+        console.log(`💾 Данные сохранены в файл: ${filePath} (всего записей: ${items.length})`);
+    } catch (e) {
+        console.error("❌ Ошибка сохранения в файл:", e);
+    }
+}

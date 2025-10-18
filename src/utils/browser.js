@@ -1,7 +1,9 @@
 const { chromium } = require('playwright');
 
 async function startBrowser() {
-    const browser = await chromium.launch({ headless: false }); // Можно true, если не нужен UI
+    const headlessEnv = process.env.PWL_HEADLESS;
+    const headless = headlessEnv === undefined ? true : String(headlessEnv).toLowerCase() === 'true';
+    const browser = await chromium.launch({ headless });
     return browser;
 }
 
