@@ -1,8 +1,8 @@
 const { configLoader } = require('./ConfigLoader');
-const { startBrowser } = require('../utils/browser');
-const { memoryManager } = require('../utils/memoryManager');
+const { startBrowser, logMemoryUsage, forceGarbageCollection } = require('../utils/browser');
+const { MemoryManager } = require('../utils/memoryManager');
 const { saveData } = require('../utils/saveData');
-// const { databaseManager } = require('../database/database'); // Удалено - не используется
+const { databaseManager } = require('../database/database');
 
 /**
  * Система циклического запуска парсеров
@@ -44,12 +44,19 @@ class ParserRunner {
         
         console.log(`🚀 Запуск циклического парсинга с парсерами: ${parserNames.join(', ')}`);
 
-        // Инициализация базы данных удалена - используется saveData напрямую
+        // Инициализируем базу данных
+        try {
+            await databaseManager.initialize();
+        } catch (error) {
+            console.error("❌ Не удалось инициализировать базу данных:", error);
+            console.log("⚠️ Парсер будет работать в режиме файлового сохранения");
+        }
 
         // Инициализируем браузер
         try {
-            this.browser = await startBrowser();
-            this.context = await this.browser.newContext();
+            const browserData = await startBrowser();
+            this.browser = browserData.browser;
+            this.context = browserData.context;
         } catch (error) {
             console.error("❌ Не удалось инициализировать браузер:", error);
             this.isRunning = false;
@@ -57,7 +64,13 @@ class ParserRunner {
         }
 
         // Инициализируем менеджер памяти
-        this.memoryManager = memoryManager;
+        this.memoryManager = new MemoryManager();
+        this.memoryManager.setConfig({
+            memoryCheckInterval: 3,
+            forceCleanupInterval: 10,
+            maxMemoryMB: 512,
+            cleanupThreshold: 0.7
+        });
 
         // Запускаем цикл парсинга
         await this.runCycle(globalConfig);
@@ -92,8 +105,8 @@ class ParserRunner {
             // Очистка памяти после каждого цикла
             if (this.isRunning) {
                 console.log(`🧹 Очистка памяти после цикла ${cycleCount}`);
-                this.memoryManager.forceGarbageCollection();
-                console.log(`📊 Память: ${JSON.stringify(this.memoryManager.getMemoryInfo())}`);
+                forceGarbageCollection();
+                logMemoryUsage();
             }
         }
 
@@ -120,7 +133,7 @@ class ParserRunner {
         await parser.initialize(this.context);
 
         // Логируем использование памяти
-        console.log(`📊 Память: ${JSON.stringify(this.memoryManager.getMemoryInfo())}`);
+        logMemoryUsage();
 
         let processedCount = 0;
 
@@ -139,7 +152,7 @@ class ParserRunner {
                         this.memoryManager.increment();
 
                         // Проверяем и выполняем очистку памяти при необходимости
-                        this.memoryManager.checkMemoryUsage();
+                        await this.memoryManager.checkAndCleanup();
                     } else {
                         console.warn(`⚠️ Данные для ${link} не прошли валидацию`);
                     }
@@ -217,8 +230,8 @@ class ParserRunner {
         }
 
         // Финальная очистка памяти
-        this.memoryManager.forceGarbageCollection();
-        console.log(`📊 Финальная память: ${JSON.stringify(this.memoryManager.getMemoryInfo())}`);
+        forceGarbageCollection();
+        logMemoryUsage();
 
         // Выводим статистику
         this.printStats();
@@ -252,7 +265,7 @@ class ParserRunner {
             currentParser: this.currentParser?.name || null,
             parserQueue: [...this.parserQueue],
             parserStats: Object.fromEntries(this.parserStats),
-            memoryStats: this.memoryManager?.getMemoryInfo() || null
+            memoryStats: this.memoryManager?.getMemoryStats() || null
         };
     }
 
