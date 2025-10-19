@@ -1,5 +1,5 @@
-async function scrapeCarDetails(url, browser) {
-  const page = await browser.newPage();
+async function scrapeCarDetails(url, context) {
+  const page = await context.newPage();
 
   try {
     console.log(`🚗 Переходим к ${url}`);
@@ -7,6 +7,9 @@ async function scrapeCarDetails(url, browser) {
     await page.setExtraHTTPHeaders({
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
+
+    // Отключаем загрузку изображений для экономии памяти
+    await page.route('**/*.{png,jpg,jpeg,gif,svg,webp}', route => route.abort());
 
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 

@@ -13,8 +13,18 @@ async function saveData(carDetails) {
 
     // Если нет настроек БД — сохраняем в файл
     if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_NAME) {
+        console.log("⚠️ Настройки БД не найдены, сохраняем в файл");
+        console.log(`DB_HOST: ${process.env.DB_HOST}`);
+        console.log(`DB_USER: ${process.env.DB_USER}`);
+        console.log(`DB_NAME: ${process.env.DB_NAME}`);
         return saveToFile(carDetails);
     }
+
+    console.log("🔗 Подключение к базе данных:");
+    console.log(`   Host: ${process.env.DB_HOST}`);
+    console.log(`   Port: ${process.env.DB_PORT}`);
+    console.log(`   Database: ${process.env.DB_NAME}`);
+    console.log(`   User: ${process.env.DB_USER}`);
 
     let client;
     try {
@@ -124,11 +134,33 @@ async function saveData(carDetails) {
         if (client) {
             try { await client.query("ROLLBACK"); } catch (_) {}
         }
-        console.error("❌ Ошибка записи в базу данных:", error);
+        console.error("❌ Ошибка записи в базу данных:", error.message);
+        console.error("❌ Полная ошибка:", error);
+        
+        // Если ошибка связана с соединением, попробуем переподключиться
+        if (error.message.includes('Connection terminated') || 
+            error.message.includes('ECONNRESET') || 
+            error.message.includes('ENOTFOUND')) {
+            console.log("🔄 Попытка переподключения к БД...");
+            try {
+                // Ждем немного перед переподключением
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return await saveData(carDetails); // Рекурсивный вызов
+            } catch (retryError) {
+                console.error("❌ Не удалось переподключиться:", retryError.message);
+            }
+        }
+        
         console.warn("💾 Перехожу на файловое сохранение (data/dubizzle_cars.json)");
         return saveToFile(carDetails);
     } finally {
-        if (client) client.release();
+        if (client) {
+            try {
+                client.release();
+            } catch (releaseError) {
+                console.error("❌ Ошибка при освобождении клиента:", releaseError.message);
+            }
+        }
     }
 }
 
