@@ -3,11 +3,11 @@
  * Управляет всеми модулями парсеров и запускает их циклично
  */
 
-const { DubicarsModule } = require('./dubicars/DubicarsModule');
-const { DubizzleModule } = require('./dubizzle/DubizzleModule');
+const { ParserModuleManager } = require('./ModuleManager');
 
 class ParserManager {
     constructor() {
+        this.moduleManager = new ParserModuleManager();
         this.modules = [];
         this.currentModuleIndex = 0;
         this.isRunning = false;
@@ -19,9 +19,9 @@ class ParserManager {
     registerModules() {
         console.log('📋 Регистрация модулей парсеров...');
         
-        // Добавляем модули
-        this.modules.push(new DubicarsModule());
-        this.modules.push(new DubizzleModule());
+        // Получаем все модули из ModuleManager
+        const moduleNames = this.moduleManager.getModules();
+        this.modules = moduleNames.map(name => this.moduleManager.getModule(name));
         
         console.log(`✅ Зарегистрировано ${this.modules.length} модулей:`);
         this.modules.forEach((module, index) => {

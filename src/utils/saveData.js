@@ -35,10 +35,10 @@ async function saveData(carDetails) {
             INSERT INTO car_listings (
                 short_url, title, make, model, year, body_type, horsepower, fuel_type, 
                 motors_trim, kilometers, price_formatted, price_raw, currency, 
-                exterior_color, location, phone, seller_name, seller_type, seller_logo, seller_profile_link
+                exterior_color, location, phone, seller_name, seller_type, seller_logo, seller_profile_link, main_image
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 
-                $14, $15, $16, $17, $18, $19, $20
+                $14, $15, $16, $17, $18, $19, $20, $21
             ) ON CONFLICT (short_url) DO UPDATE SET
                 title = EXCLUDED.title,
                 make = EXCLUDED.make,
@@ -58,7 +58,8 @@ async function saveData(carDetails) {
                 seller_name = EXCLUDED.seller_name,
                 seller_type = EXCLUDED.seller_type,
                 seller_logo = EXCLUDED.seller_logo,
-                seller_profile_link = EXCLUDED.seller_profile_link
+                seller_profile_link = EXCLUDED.seller_profile_link,
+                main_image = EXCLUDED.main_image
             RETURNING id;
         `;
 
@@ -83,6 +84,7 @@ async function saveData(carDetails) {
             carDetails.sellers?.sellerType || "Неизвестен",
             carDetails.sellers?.sellerLogo || null,
             carDetails.sellers?.sellerProfileLink || null,
+            carDetails.main_image || null,
         ];
 
         // Подробное логирование данных перед записью
@@ -107,6 +109,7 @@ async function saveData(carDetails) {
         console.log(`   Тип продавца: ${values[17]}`);
         console.log(`   Логотип: ${values[18]}`);
         console.log(`   Профиль: ${values[19]}`);
+        console.log(`   Главное фото: ${values[20]}`);
 
         const res = await client.query(upsertCarQuery, values);
         const listingId = res.rows[0].id;

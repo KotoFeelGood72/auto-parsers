@@ -1,6 +1,5 @@
-const { ConfigParser } = require('../../ConfigParser');
-const fs = require('fs');
-const path = require('path');
+const { DubicarsParser } = require('./DubicarsParser');
+const { configLoader } = require('../../ConfigLoader');
 
 /**
  * Модуль парсера Dubicars
@@ -8,18 +7,20 @@ const path = require('path');
 class DubicarsModule {
     constructor() {
         this.name = 'Dubicars';
-        this.configPath = path.join(__dirname, 'config.json');
         this.config = this.loadConfig();
-        this.parser = new ConfigParser(this.config);
+        this.parser = new DubicarsParser(this.config);
     }
 
     /**
-     * Загрузка конфигурации модуля
+     * Загрузка конфигурации модуля из централизованного хранилища
      */
     loadConfig() {
         try {
-            const configData = fs.readFileSync(this.configPath, 'utf8');
-            return JSON.parse(configData);
+            const config = configLoader.getConfig('dubicars');
+            if (!config) {
+                throw new Error(`Конфигурация ${this.name} не найдена в централизованном хранилище`);
+            }
+            return config;
         } catch (error) {
             console.error(`❌ Ошибка загрузки конфигурации ${this.name}:`, error.message);
             throw error;

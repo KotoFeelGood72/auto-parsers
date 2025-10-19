@@ -28,6 +28,7 @@ const createCarListingsTable = `
         seller_type TEXT DEFAULT 'Неизвестен',
         seller_logo TEXT,
         seller_profile_link TEXT,
+        main_image TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     );

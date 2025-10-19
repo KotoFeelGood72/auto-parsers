@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const { ConfigParser } = require('./ConfigParser');
 
 /**
  * Загрузчик конфигураций парсеров
@@ -59,23 +58,6 @@ class ConfigLoader {
         return Array.from(this.configs.keys());
     }
 
-    /**
-     * Создание парсера на основе конфигурации
-     * @param {string} configName - Имя конфигурации
-     * @param {Object} overrides - Переопределения конфигурации
-     * @returns {ConfigParser} Экземпляр парсера
-     */
-    createParser(configName, overrides = {}) {
-        const config = this.getConfig(configName);
-        if (!config) {
-            throw new Error(`Конфигурация ${configName} не найдена`);
-        }
-
-        // Объединяем конфигурацию с переопределениями
-        const mergedConfig = this.mergeConfigs(config, overrides);
-        
-        return new ConfigParser(mergedConfig);
-    }
 
     /**
      * Объединение конфигураций

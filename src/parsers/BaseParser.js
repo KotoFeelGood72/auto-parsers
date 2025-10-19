@@ -79,6 +79,7 @@ class BaseParser {
             seller_type: rawData.sellers?.sellerType || "Неизвестен",
             seller_logo: rawData.sellers?.sellerLogo || null,
             seller_profile_link: rawData.sellers?.sellerProfileLink || null,
+            main_image: rawData.main_image || null,
             photos: rawData.photos || []
         };
     }

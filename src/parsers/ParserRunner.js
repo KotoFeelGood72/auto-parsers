@@ -42,14 +42,13 @@ class ParserRunner {
         this.isRunning = true;
         this.parserQueue = [...parserNames];
         
-        console.log(`🚀 Запуск циклического парсинга с парсерами: ${parserNames.join(', ')}`);
+        console.log(`🚀 Запуск парсеров: ${parserNames.join(', ')}`);
 
         // Инициализируем базу данных
         try {
             await databaseManager.initialize();
         } catch (error) {
-            console.error("❌ Не удалось инициализировать базу данных:", error);
-            console.log("⚠️ Парсер будет работать в режиме файлового сохранения");
+            console.error("❌ База данных недоступна, используем файлы");
         }
 
         // Инициализируем браузер
@@ -84,7 +83,7 @@ class ParserRunner {
 
         while (this.isRunning) {
             cycleCount++;
-            console.log(`\n🔄 === ЦИКЛ ${cycleCount} ===`);
+            console.log(`🔄 Цикл ${cycleCount}`);
 
             for (const parserName of this.parserQueue) {
                 if (!this.isRunning) break;
@@ -92,21 +91,18 @@ class ParserRunner {
                 try {
                     await this.runParser(parserName, globalConfig);
                 } catch (error) {
-                    console.error(`❌ Ошибка при запуске парсера ${parserName}:`, error);
+                    console.error(`❌ Ошибка парсера ${parserName}: ${error.message}`);
                 }
 
                 // Пауза между парсерами
                 if (this.isRunning) {
-                    console.log(`⏸️ Пауза между парсерами: 5 секунд`);
                     await this.delay(5000);
                 }
             }
 
             // Очистка памяти после каждого цикла
             if (this.isRunning) {
-                console.log(`🧹 Очистка памяти после цикла ${cycleCount}`);
                 forceGarbageCollection();
-                logMemoryUsage();
             }
         }
 
@@ -117,7 +113,7 @@ class ParserRunner {
      * Запуск одного парсера
      */
     async runParser(parserName, globalConfig = {}) {
-        console.log(`\n🎯 Запуск парсера: ${parserName}`);
+        console.log(`🎯 ${parserName}`);
 
         // Проверяем доступность парсера
         if (!configLoader.getAvailableConfigs().includes(parserName)) {
@@ -132,9 +128,6 @@ class ParserRunner {
         // Инициализируем парсер
         await parser.initialize(this.context);
 
-        // Логируем использование памяти
-        logMemoryUsage();
-
         let processedCount = 0;
 
         try {
@@ -142,7 +135,6 @@ class ParserRunner {
             for await (const link of parser.getListings()) {
                 if (!this.isRunning) break;
 
-                console.log(`🚗 Обрабатываем ${link}`);
                 try {
                     const rawData = await parser.parseListing(link);
                     if (rawData && parser.validateData(rawData)) {
@@ -153,11 +145,9 @@ class ParserRunner {
 
                         // Проверяем и выполняем очистку памяти при необходимости
                         await this.memoryManager.checkAndCleanup();
-                    } else {
-                        console.warn(`⚠️ Данные для ${link} не прошли валидацию`);
                     }
                 } catch (error) {
-                    console.error(`❌ Ошибка при обработке ${link}:`, error);
+                    console.error(`❌ Ошибка обработки: ${error.message}`);
                 }
             }
 
@@ -165,17 +155,17 @@ class ParserRunner {
             this.updateParserStats(parserName, processedCount);
 
         } catch (error) {
-            console.error(`❌ Ошибка при парсинге ${parserName}:`, error);
+            console.error(`❌ Ошибка парсинга ${parserName}: ${error.message}`);
         } finally {
             // Очищаем ресурсы парсера
             try {
                 await parser.cleanup();
             } catch (cleanupError) {
-                console.error("❌ Ошибка при очистке парсера:", cleanupError);
+                console.error("❌ Ошибка очистки:", cleanupError.message);
             }
         }
 
-        console.log(`✅ Парсер ${parserName} завершил работу. Обработано: ${processedCount} объявлений`);
+        console.log(`✅ ${parserName}: ${processedCount} объявлений`);
     }
 
     /**
@@ -199,7 +189,7 @@ class ParserRunner {
      * Остановка циклического парсинга
      */
     async stop() {
-        console.log("🛑 Остановка циклического парсинга...");
+        console.log("🛑 Остановка...");
         this.isRunning = false;
 
         // Очищаем ресурсы текущего парсера
@@ -207,7 +197,7 @@ class ParserRunner {
             try {
                 await this.currentParser.cleanup();
             } catch (error) {
-                console.error("❌ Ошибка при очистке текущего парсера:", error);
+                console.error("❌ Ошибка очистки парсера:", error.message);
             }
         }
 
@@ -216,22 +206,20 @@ class ParserRunner {
             try {
                 await this.context.close();
             } catch (error) {
-                console.error("❌ Ошибка при закрытии контекста:", error);
+                console.error("❌ Ошибка закрытия контекста:", error.message);
             }
         }
 
         if (this.browser) {
             try {
                 await this.browser.close();
-                console.log("🛑 Браузер закрыт");
             } catch (error) {
-                console.error("❌ Ошибка при закрытии браузера:", error);
+                console.error("❌ Ошибка закрытия браузера:", error.message);
             }
         }
 
         // Финальная очистка памяти
         forceGarbageCollection();
-        logMemoryUsage();
 
         // Выводим статистику
         this.printStats();
@@ -241,19 +229,16 @@ class ParserRunner {
      * Вывод статистики парсеров
      */
     printStats() {
-        console.log("\n📊 === СТАТИСТИКА ПАРСЕРОВ ===");
+        console.log("\n📊 Статистика:");
         
         for (const [parserName, stats] of this.parserStats) {
-            console.log(`\n🎯 ${parserName}:`);
-            console.log(`   Всего обработано: ${stats.totalProcessed} объявлений`);
-            console.log(`   Количество запусков: ${stats.runs}`);
-            console.log(`   Последний запуск: ${stats.lastRun ? stats.lastRun.toLocaleString() : 'Никогда'}`);
+            console.log(`   ${parserName}: ${stats.totalProcessed} объявлений`);
         }
 
         const totalProcessed = Array.from(this.parserStats.values())
             .reduce((sum, stats) => sum + stats.totalProcessed, 0);
         
-        console.log(`\n📈 Общий итог: ${totalProcessed} объявлений`);
+        console.log(`   Всего: ${totalProcessed} объявлений`);
     }
 
     /**
