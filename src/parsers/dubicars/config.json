@@ -1,0 +1,122 @@
+{
+  "name": "Dubicars",
+  "baseUrl": "https://www.dubicars.com",
+  "listingsUrl": "https://www.dubicars.com/dubai/used?page={page}",
+  "maxPages": 50,
+  "timeout": 60000,
+  "delayBetweenRequests": 1000,
+  "enableImageLoading": false,
+  
+  "selectors": {
+    "listings": {
+      "container": "section#serp-list li.serp-list-item",
+      "link": "a.image-container"
+    },
+    "details": {
+      "title": ".car-title",
+      "price": [
+        "div.price.currency-price-field",
+        ".price-box .price",
+        ".price-box .price-text", 
+        ".price-section .price",
+        ".listing-price",
+        ".car-price",
+        "[class*='price']",
+        ".price",
+        ".amount",
+        ".cost",
+        ".value",
+        "[data-price]",
+        ".listing-details .price",
+        ".car-details .price",
+        ".vehicle-price",
+        ".ad-price"
+      ],
+      "specs": {
+        "year": {
+          "label": "Year",
+          "selector": "#specifications-container ul li",
+          "fallback": "Неизвестно"
+        },
+        "make": {
+          "label": "Make",
+          "selector": "#specifications-container ul li",
+          "fallback": "Неизвестно"
+        },
+        "model": {
+          "label": "Model",
+          "selector": "#specifications-container ul li",
+          "fallback": "Неизвестно"
+        },
+        "fuel_type": {
+          "label": "Fuel Type",
+          "selector": "#specifications-container ul li",
+          "fallback": "Неизвестно"
+        },
+        "body_type": {
+          "label": "Vehicle type",
+          "selector": "#specifications-container ul li",
+          "fallback": "Неизвестно"
+        },
+        "horsepower": {
+          "label": "Horsepower",
+          "selector": "#specifications-container ul li",
+          "type": "number",
+          "fallback": "Неизвестно"
+        },
+        "motors_trim": {
+          "label": "Trim",
+          "selector": "#specifications-container ul li",
+          "fallback": "Неизвестно"
+        },
+        "kilometers": {
+          "label": "Kilometers",
+          "selector": "#specifications-container ul li",
+          "type": "number",
+          "fallback": 0
+        },
+        "exterior_color": {
+          "label": "Color",
+          "selector": "#specifications-container ul li",
+          "fallback": "Неизвестно"
+        },
+        "location": {
+          "label": "Location",
+          "selector": "#specifications-container ul li",
+          "fallback": "Dubai"
+        }
+      },
+      "phone": {
+        "selector": "a.whatsapp-link",
+        "attr": "href",
+        "regex": "phone=([\\d+]+)",
+        "fallback": "Не указан"
+      },
+      "seller_name": {
+        "selector": "#seller-info .seller-intro strong",
+        "fallback": "Неизвестен"
+      },
+      "seller_type": {
+        "selector": "#seller-info .seller-type",
+        "fallback": "Неизвестен"
+      },
+      "seller_logo": {
+        "selector": "#seller-info .seller-intro img",
+        "attr": "src"
+      },
+      "seller_profile_link": {
+        "selector": "#seller-info .links li a",
+        "attr": "href"
+      },
+      "photos": {
+        "selector": "#car-images-slider img",
+        "attr": "src"
+      }
+    }
+  },
+  
+  "validation": {
+    "required": ["title", "price"],
+    "minPrice": 1000
+  }
+}
