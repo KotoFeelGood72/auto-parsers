@@ -5,11 +5,13 @@
 
 const { DubicarsModule } = require('./src/parsers/modules/dubicars/index');
 const { OneclickdriveModule } = require('./src/parsers/modules/oneclickdrive/index');
+const { AutotradersModule } = require('./src/parsers/modules/autotraders/index');
 
 // Реестр доступных модулей
 const modules = {
     dubicars: DubicarsModule,
     oneclickdrive: OneclickdriveModule,
+    autotraders: AutotradersModule,
 };
 
 async function runModule(moduleName) {
@@ -54,6 +56,7 @@ if (!moduleName) {
     console.log('📋 Доступные модули:');
     console.log('   - dubicars (автономный модуль)');
     console.log('   - oneclickdrive (автономный модуль)');
+    console.log('   - autotraders (автономный модуль)');
     console.log('');
     console.log('💡 Использование: node run_module.js <имя_модуля>');
     process.exit(1);
