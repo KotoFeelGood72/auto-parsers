@@ -40,48 +40,123 @@ class AutomarketParser extends BaseParser {
                 });
 
                 console.log("📄 Собираем ссылки на бренды...");
-                await page.waitForSelector(".tagList a", { timeout: 30000 });
-
-                const brandLinks = await page.$$eval(".tagList a", (elements) =>
-                    elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
-                );
+                
+                // Попробуем разные селекторы для брендов
+                let brandLinks = [];
+                const possibleSelectors = [
+                    ".tagList a",
+                    ".brands-list a",
+                    ".brand-filter a",
+                    "a[href*='/motors/used-cars/']"
+                ];
+                
+                for (const selector of possibleSelectors) {
+                    try {
+                        await page.waitForSelector(selector, { timeout: 10000 });
+                        brandLinks = await page.$$eval(selector, (elements) =>
+                            elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
+                        );
+                        if (brandLinks.length > 0) {
+                            console.log(`✅ Найдено ${brandLinks.length} брендов с селектором: ${selector}`);
+                            break;
+                        }
+                    } catch (error) {
+                        console.log(`⚠️ Селектор ${selector} не найден`);
+                    }
+                }
 
                 console.log(`✅ Найдено ${brandLinks.length} брендов. Начинаем парсинг...`);
+                console.log(`🔍 Первые 5 брендов:`, brandLinks.slice(0, 5));
 
-                for (const brandLink of brandLinks) {
+                // Ограничиваем количество брендов для тестирования (первые 3)
+                const brandsToProcess = brandLinks.slice(0, 3);
+                console.log(`🔧 Обрабатываем первые ${brandsToProcess.length} брендов для тестирования`);
+
+                for (const brandLink of brandsToProcess) {
                     const fullBrandUrl = `${this.config.baseUrl}${brandLink}`;
                     console.log(`🚗 Переход в бренд: ${fullBrandUrl}`);
                     await page.goto(fullBrandUrl, { waitUntil: "domcontentloaded", timeout: this.config.timeout });
 
                     let currentPage = 1;
+                    let totalListingsForBrand = 0;
+                    
                     while (true) {
                         console.log(`📄 Загружаем страницу ${currentPage} для бренда ${fullBrandUrl}...`);
-                        await page.waitForSelector('[data-testid^="listing-"]', { timeout: 30000 });
-
-                        const links = await page.$$eval("[data-testid^='listing-']", (elements) =>
-                            elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
-                        );
-
-                        for (const link of links) {
-                            yield `${this.config.baseUrl}${link}`;
+                        
+                        // Попробуем разные селекторы для объявлений
+                        let links = [];
+                        const listingSelectors = [
+                            '[data-testid^="listing-"]',
+                            '.listing-item a',
+                            '.ad-item a',
+                            'a[href*="/motors/used-cars/"]'
+                        ];
+                        
+                        for (const selector of listingSelectors) {
+                            try {
+                                await page.waitForSelector(selector, { timeout: 10000 });
+                                links = await page.$$eval(selector, (elements) =>
+                                    elements.map((el) => el.getAttribute("href")).filter((href) => href !== null)
+                                );
+                                if (links.length > 0) {
+                                    console.log(`✅ Найдено ${links.length} объявлений с селектором: ${selector}`);
+                                    break;
+                                }
+                            } catch (error) {
+                                console.log(`⚠️ Селектор объявлений ${selector} не найден`);
+                            }
                         }
 
-                        console.log(`✅ Страница ${currentPage}: найдено ${links.length} объявлений`);
-
-                        const nextButton = await page.$('[data-testid="page-next"]');
-                        if (!nextButton) {
-                            console.log("🏁 Достигнута последняя страница бренда. Возвращаемся к списку брендов.");
+                        if (links.length === 0) {
+                            console.warn(`⚠️ На странице ${currentPage} не найдено объявлений для бренда ${fullBrandUrl}`);
                             break;
                         }
 
-                        const nextPageNumber = await page.$eval('[data-testid="page-next"]', (el) => {
-                            const href = el.getAttribute("href");
-                            const match = href.match(/page=(\d+)/);
-                            return match ? parseInt(match[1], 10) : null;
-                        });
+                        for (const link of links) {
+                            yield `${this.config.baseUrl}${link}`;
+                            totalListingsForBrand++;
+                        }
+
+                        console.log(`✅ Страница ${currentPage}: найдено ${links.length} объявлений (всего для бренда: ${totalListingsForBrand})`);
+
+                        // Попробуем найти кнопку "следующая страница"
+                        let nextButton = null;
+                        const nextButtonSelectors = [
+                            '[data-testid="page-next"]',
+                            '.pagination .next',
+                            '.pagination a[href*="page="]',
+                            'a[aria-label="Next"]',
+                            'a[title="Next"]'
+                        ];
+                        
+                        for (const selector of nextButtonSelectors) {
+                            nextButton = await page.$(selector);
+                            if (nextButton) {
+                                console.log(`✅ Найдена кнопка "следующая страница" с селектором: ${selector}`);
+                                break;
+                            }
+                        }
+                        
+                        if (!nextButton) {
+                            console.log(`🏁 Достигнута последняя страница бренда ${fullBrandUrl}. Всего объявлений: ${totalListingsForBrand}`);
+                            break;
+                        }
+
+                        // Попробуем получить номер следующей страницы
+                        let nextPageNumber = null;
+                        try {
+                            const href = await nextButton.getAttribute("href");
+                            if (href) {
+                                const match = href.match(/page=(\d+)/);
+                                nextPageNumber = match ? parseInt(match[1], 10) : null;
+                            }
+                        } catch (error) {
+                            console.log("⚠️ Не удалось получить номер следующей страницы, пробуем увеличить на 1");
+                            nextPageNumber = currentPage + 1;
+                        }
 
                         if (!nextPageNumber || nextPageNumber <= currentPage) {
-                            console.log("🏁 Больше страниц нет. Возвращаемся к списку брендов.");
+                            console.log(`🏁 Больше страниц нет для бренда ${fullBrandUrl}. Всего объявлений: ${totalListingsForBrand}`);
                             break;
                         }
 
