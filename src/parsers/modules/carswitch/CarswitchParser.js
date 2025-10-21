@@ -1,4 +1,5 @@
 const { BaseParser } = require('../../BaseParser');
+const { saveData } = require('../../../utils/saveData');
 
 /**
  * Парсер для сайта Carswitch.com
@@ -33,36 +34,59 @@ class CarswitchParser extends BaseParser {
 
                     await page.goto(url, { 
                         waitUntil: "domcontentloaded", 
-                        timeout: this.config.timeout 
+                        timeout: 60000 
                     });
+
+                    // Ждем загрузки страницы
+                    await page.waitForTimeout(3000);
 
                     // Скроллим страницу для подгрузки всех карточек
                     await this.autoScroll(page);
-                    await page.waitForTimeout(1000);
+                    await page.waitForTimeout(2000);
 
-                    // Ждём хотя бы одну видимую карточку
-                    await page.waitForSelector(
-                        "#main-listing-div .pro-item a.image-wrapper[href]",
-                        { timeout: 30000 }
-                    );
-
-                    const carLinks = await page.$$eval(
+                    // Пробуем разные селекторы для поиска карточек
+                    let carLinks = [];
+                    const possibleSelectors = [
+                        ".car-cards-container a.block.touch-manipulation",
+                        ".car-cards-container a[href*='/used-car/']",
+                        ".car-cards-container a[href*='/dubai/used-car/']",
+                        "a[href*='/used-car/']",
+                        "a[href*='/dubai/used-car/']",
                         "#main-listing-div .pro-item a.image-wrapper",
-                        (anchors) => anchors.map((a) => a.href).filter(Boolean)
-                    );
+                        "#main-listing-div .pro-item a",
+                        ".pro-item a.image-wrapper",
+                        ".pro-item a",
+                        "a[href*='/car/']",
+                        "a[href*='/used-cars/']"
+                    ];
 
-                    console.log(`🧪 Найдено карточек на странице ${currentPage}: ${carLinks.length}`);
+                    for (const selector of possibleSelectors) {
+                        try {
+                            await page.waitForSelector(selector, { timeout: 10000 });
+                            carLinks = await page.$$eval(
+                                selector,
+                                (anchors) => anchors.map((a) => a.href).filter(Boolean)
+                            );
+                            
+                            if (carLinks.length > 0) {
+                                console.log(`✅ Найдено ${carLinks.length} объявлений`);
+                                break;
+                            }
+                        } catch (error) {
+                            continue;
+                        }
+                    }
 
                     if (carLinks.length === 0) {
-                        console.log(`⚠️ Карточки не найдены на странице ${currentPage}. Завершаем парсинг.`);
+                        console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
                         break;
                     }
+
+                    console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
 
                     for (const link of carLinks) {
                         yield link;
                     }
-
-                    console.log(`✅ Страница ${currentPage}: обработано ${carLinks.length} объявлений`);
                     currentPage++;
                 }
 
@@ -100,12 +124,16 @@ class CarswitchParser extends BaseParser {
             console.log(`🚀 Запуск парсера ${this.name}...`);
             
             for await (const listingUrl of this.getListings()) {
-                console.log(`🔍 Парсим объявление: ${listingUrl}`);
+                console.log(`🚗 Обрабатываем ${listingUrl}`);
                 
                 const data = await this.parseListing(listingUrl);
                 if (data && this.validateData(data)) {
                     const normalizedData = this.normalizeData(data);
                     results.push(normalizedData);
+                    
+                    // Сохраняем данные в базу
+                    await this.saveData(normalizedData);
+                    
                     console.log(`✅ Обработано объявление: ${data.title}`);
                 } else {
                     console.log(`⚠️ Пропущено объявление (невалидные данные): ${listingUrl}`);
@@ -142,126 +170,216 @@ class CarswitchParser extends BaseParser {
                 timeout: 15000
             });
 
-            console.log("📄 Стягиваем базовые данные…");
+            console.log("📄 Загружаем данные...");
 
-            // Получаем сырой набор фич из Car Overview
+            // Кликаем на кнопку для открытия модального окна с детальными параметрами
+            try {
+                // Пробуем разные селекторы для поиска кнопки
+                const possibleSelectors = [
+                    '.font-bold.rtl\\:-ml-12.text-primary-500.cursor-pointer',
+                    '.font-bold.text-primary-500.cursor-pointer',
+                    '.text-primary-500.cursor-pointer',
+                    '.font-bold.cursor-pointer',
+                    'button[class*="cursor-pointer"]',
+                    'div[class*="cursor-pointer"]',
+                    'span[class*="cursor-pointer"]',
+                    '[class*="text-primary-500"]',
+                    'button',
+                    'div[role="button"]'
+                ];
+                
+                let detailsButton = null;
+                for (const selector of possibleSelectors) {
+                    detailsButton = await page.$(selector);
+                    if (detailsButton) {
+                        console.log("🔍 Кнопка найдена с селектором:", selector);
+                        break;
+                    }
+                }
+                
+                if (detailsButton) {
+                    console.log("🔍 Открываем модальное окно с детальными параметрами...");
+                    await detailsButton.click();
+                    await page.waitForTimeout(3000); // Увеличиваем время ожидания
+                    
+                    // Проверяем, открылось ли модальное окно
+                    const modal = await page.$('.flex-1.px-8.py-28.sm\\:px-24.sm\\:py-24.overflow-y-auto.flex.\\!py-4.w-full.h-full');
+                    console.log("🔍 Модальное окно открыто:", !!modal);
+                } else {
+                    console.log("⚠️ Кнопка для открытия модального окна не найдена ни с одним селектором");
+                    
+                    // Попробуем найти все элементы с cursor-pointer
+                    const allClickableElements = await page.$$eval('[class*="cursor-pointer"]', elements => 
+                        elements.map(el => ({
+                            tagName: el.tagName,
+                            className: el.className,
+                            textContent: el.textContent?.trim().substring(0, 50)
+                        }))
+                    );
+                    console.log("🔍 Все кликабельные элементы:", allClickableElements);
+                }
+            } catch (error) {
+                console.log("⚠️ Не удалось открыть модальное окно:", error.message);
+            }
+
+            // Получаем сырой набор фич из Car Overview (новая структура)
             const overviewFeatures = await page.$$eval(
-                ".cs-block--overview .item",
+                ".md\\:flex.md\\:flex-row.flex-col.md\\:items-start.items-stretch.md\\:gap-1.gap-4.w-full .md\\:flex-1.bg-white.p-4",
                 items => {
                     const map = {};
                     items.forEach(item => {
-                        const key = item.querySelector(".cs-block_sub-title")?.textContent.trim();
-                        const val = item.querySelector("p")?.textContent.trim();
+                        const key = item.querySelector("h3.font-medium")?.textContent.trim();
+                        const val = item.querySelector("p.text-sm.text-label-black")?.textContent.trim();
                         if (key) map[key] = val;
                     });
                     return map;
                 }
             );
 
-            // Получаем сырой набор фич из Car details
+            // Получаем сырой набор фич из Car details (новая структура)
             const detailFeatures = await page.$$eval(
-                ".cs-block--car-detail .item",
+                ".mt-2.md\\:text-base.text-sm.leading-5",
                 items => {
                     const map = {};
-                    items.forEach(item => {
-                        const key = item.querySelector(".item-title")?.textContent.trim().replace(/:$/, "");
-                        const val = item.querySelector("p.text")?.textContent.trim();
-                        if (key) map[key] = val;
-                    });
+                    const text = items?.textContent?.trim();
+                    if (text) {
+                        // Парсим текст вида "First owner: No • Specs: GCC specs • More"
+                        const parts = text.split('•');
+                        parts.forEach(part => {
+                            const [key, val] = part.split(':');
+                            if (key && val) {
+                                map[key.trim()] = val.trim();
+                            }
+                        });
+                    }
                     return map;
                 }
             );
+
+            // Получаем параметры из модального окна
+            const modalFeatures = await page.evaluate(() => {
+                const modal = document.querySelector('.flex-1.px-8.py-28.sm\\:px-24.sm\\:py-24.overflow-y-auto.flex.\\!py-4.w-full.h-full');
+                console.log('Modal found:', !!modal);
+                if (!modal) return {};
+
+                const map = {};
+                
+                // Ищем все строки с параметрами в модальном окне
+                const rows = modal.querySelectorAll('.flex.w-full.justify-between.py-3.border-b.border-gray-100');
+                console.log('Rows found:', rows.length);
+                rows.forEach(row => {
+                    const spans = row.querySelectorAll('span');
+                    if (spans.length >= 2) {
+                        const key = spans[0]?.textContent?.trim();
+                        const value = spans[1]?.textContent?.trim();
+                        console.log('Found param:', key, '=', value);
+                        if (key && value) {
+                            map[key] = value;
+                        }
+                    }
+                });
+
+                return map;
+            });
 
             // Объединяем их в одну карту
             const rawFeatures = {
                 ...overviewFeatures,
-                ...detailFeatures
+                ...detailFeatures,
+                ...modalFeatures
             };
 
+            // Отладочная информация
+            console.log("🔍 Извлеченные параметры:", rawFeatures);
+            console.log("🔍 Параметры из модального окна:", modalFeatures);
+
             // Извлекаем основные поля
-            const title = await this.safeEval(page, ".car-info-holder h1.title", el => el.textContent) || "Не указано";
+            const title = await this.safeEval(page, "h2.text-base.md\\:text-2xl.font-medium.text-label-black", el => el.textContent.trim()) || "Не указано";
 
-            const yearText = await this.safeEval(
-                page,
-                ".mileage .item:nth-child(1) .mileage_text",
-                el => el.textContent
-            ) || "0";
-            const year = yearText.replace(/\D/g, "") || null;
+            // Отладочная информация для заголовка
+            console.log("🔍 Извлеченный заголовок:", title);
 
-            const kmText = await this.safeEval(
-                page,
-                ".mileage .item:nth-child(2) .mileage_text",
-                el => el.textContent
-            ) || "0";
+            // Извлекаем год - ищем span после изображения с alt="Year"
+            const yearText = await page.evaluate(() => {
+                const yearImg = Array.from(document.querySelectorAll('img')).find(img => 
+                    img.getAttribute('alt') === 'Year' || img.getAttribute('alt') === 'Год'
+                );
+                if (yearImg) {
+                    const nextSpan = yearImg.parentElement?.querySelector('span');
+                    return nextSpan?.textContent?.trim() || null;
+                }
+                return null;
+            }) 
+            const year = yearText ? yearText.replace(/\D/g, "") : null;
+
+            // Извлекаем пробег - ищем span после изображения с alt="Mileage"
+            const kmText = await page.evaluate(() => {
+                const mileageImg = Array.from(document.querySelectorAll('img')).find(img => 
+                    img.getAttribute('alt') === 'Mileage' || img.getAttribute('alt') === 'Пробег'
+                );
+                if (mileageImg) {
+                    const nextSpan = mileageImg.parentElement?.querySelector('span');
+                    return nextSpan?.textContent?.trim() || null;
+                }
+                return null;
+            }) 
             const kilometers = kmText.replace(/\D/g, "") || "0";
 
-            const priceText = await this.safeEval(
-                page,
-                ".show-old-price",
-                el => el.textContent
-            ) || "";
+            // Извлекаем цену
+            const priceText = await this.safeEval(page, ".md\\:text-2xl.text-base.font-bold.text-black", el => el.textContent) || "";
             const priceFormatted = priceText.replace(/[^\d,]/g, "").trim();
             const priceRaw = priceFormatted ?
                 parseFloat(priceFormatted.replace(/,/g, "")) :
                 null;
 
-            // Получаем фотографии
-            const photos = await page.$$eval(
-                ".banner-swiper .slide-image",
-                imgs =>
-                Array.from(
+            // Получаем фотографии - ищем изображения с alt, начинающимся с "Car image"
+            const photos = await page.evaluate(() => {
+                const carImages = Array.from(document.querySelectorAll('img')).filter(img => 
+                    img.getAttribute('alt') && img.getAttribute('alt').startsWith('Car image')
+                );
+                
+                return Array.from(
                     new Set(
-                        imgs
-                        .map(img => img.getAttribute("data-src") || img.src)
-                        .map(src => src.startsWith("//") ? "https:" + src : src)
-                        .filter(src => src)
+                        carImages
+                            .map(img => img.getAttribute("src") || img.src)
+                            .map(src => src.startsWith("//") ? "https:" + src : src)
+                            .filter(src => src && (src.includes("carswitch.com") || src.includes("cloudfront.net")))
                     )
-                )
-            ) || [];
+                );
+            }) || [];
 
-            const location = await this.safeEval(
-                page,
-                ".location_text#location_text",
-                el => el.textContent.trim()
-            ) || "Не указано";
+            // Извлекаем локацию - ищем span после изображения с alt="Location"
+            const location = await page.evaluate(() => {
+                const locationImg = Array.from(document.querySelectorAll('img')).find(img => 
+                    img.getAttribute('alt') === 'Location' || img.getAttribute('alt') === 'Локация'
+                );
+                if (locationImg) {
+                    const nextSpan = locationImg.parentElement?.querySelector('span');
+                    return nextSpan?.textContent?.trim() || null;
+                }
+                return null;
+            }) || "Не указано";
 
-            // Данные о продавце
-            const sellerName = await this.safeEval(
-                page,
-                ".cmpbrndlogo",
-                img => img.getAttribute("title")
-            ) || "Не указан";
-
-            const sellerType = await this.safeEval(
-                page,
-                ".priceingdt:nth-of-type(6) .text-right",
-                el => el.textContent.trim()
-            ) || "Частное лицо";
-
-            const sellerLogo = await this.safeEval(page, ".cmpbrndlogo", el => el.src) || null;
-            const sellerProfileLink = await this.safeEval(page, ".moredealer", a => a.href) || null;
-            const phoneNumber = await this.safeEval(
-                page,
-                ".callnwbtn",
-                el => el.textContent.trim()
-            ) || "Не указан";
+            // Данные о продавце (пока используем значения по умолчанию, так как структура изменилась)
+            const sellerName = "CarSwitch";
+            const sellerType = "Дилер";
+            const sellerLogo = null;
+            const sellerProfileLink = null;
+            const phoneNumber = "Не указан";
 
             // Составляем итоговый объект
             const carDetails = {
                 short_url: url,
                 title,
                 photos,
-                make: this.pick(rawFeatures, ["Make", "Марка"], title.split(" ")[0]),
-                model: this.pick(rawFeatures, ["Model", "Модель"], title.replace(/^\S+\s*/, "")),
+                main_image: photos.length > 0 ? photos[0] : null,
+                make: this.pick(rawFeatures, ["Make", "Марка", "Brand", "brand"], title && title !== "Не указано" ? title.split(" ")[0] : "Не указано"),
+                model: this.pick(rawFeatures, ["Model", "Модель", "Car Model", "car model"], title && title !== "Не указано" ? title.replace(/^\S+\s*/, "") : "Не указано"),
                 year,
-                body_type: this.pick(rawFeatures, ["Body Type", "Тип кузова"], "Не указано"),
-                horsepower: this.pick(rawFeatures, ["Engine Size", "Мощность"], null) ?
-                    parseInt(
-                        this.pick(rawFeatures, ["Engine Size", "Мощность"]).replace(/\D/g, ""),
-                        10
-                    ) : null,
-                fuel_type: this.pick(rawFeatures, ["Fuel Type", "Тип топлива"], "Не указано"),
-                motors_trim: this.pick(rawFeatures, ["Specs", "Комплектация"], "Не указано"),
+                body_type: this.pick(rawFeatures, ["Body type", "Body Type", "Тип кузова", "body type", "Body", "body", "Vehicle Type", "vehicle type"], "Не указано"),
+                horsepower: this.pick(rawFeatures, ["Engine Size", "Мощность", "Engine", "engine", "Displacement", "displacement"], null),
+                fuel_type: this.pick(rawFeatures, ["Fuel Type", "Тип топлива", "Fuel", "fuel", "Fuel type", "fuel type", "Gas", "gas", "Petrol", "petrol"], "Не указано"),
+                motors_trim: this.pick(rawFeatures, ["Specs", "Комплектация", "Spec", "spec", "Specification", "specification", "Trim", "trim", "Variant", "variant"], "Не указано"),
                 kilometers,
                 sellers: {
                     sellerName,
@@ -274,12 +392,23 @@ class CarswitchParser extends BaseParser {
                     raw: priceRaw,
                     currency: "AED",
                 },
-                exterior_color: this.pick(rawFeatures, ["Color", "Цвет"], "Не указано"),
+                exterior_color: this.pick(rawFeatures, ["Color", "Цвет", "Exterior Color", "exterior color", "Paint", "paint", "Exterior", "exterior", "Body Color", "body color"], "Не указано"),
                 location,
                 contact: {
                     phone: phoneNumber,
                 },
             };
+
+            // Закрываем модальное окно если оно открыто
+            try {
+                const closeButton = await page.$('.rounded-full.w-6.h-6.flex.items-center.border.border-\\[\\#0F1B41\\].justify-center.hover\\:bg-gray-100.cursor-pointer.transition-colors');
+                if (closeButton) {
+                    await closeButton.click();
+                    await page.waitForTimeout(500);
+                }
+            } catch (error) {
+                // Игнорируем ошибки закрытия модального окна
+            }
 
             console.log("✅ Данные автомобиля успешно извлечены");
             return carDetails;
@@ -318,7 +447,15 @@ class CarswitchParser extends BaseParser {
      */
     async autoScroll(page) {
         await page.evaluate(async () => {
-            const container = document.querySelector("#main-listing-div");
+            // Пробуем разные контейнеры для скролла
+            const containers = [
+                document.querySelector(".car-cards-container"),
+                document.querySelector("#main-listing-div"),
+                document.querySelector("main"),
+                document.body
+            ];
+
+            const container = containers.find(c => c !== null);
             if (!container) return;
 
             await new Promise((resolve) => {
@@ -344,6 +481,17 @@ class CarswitchParser extends BaseParser {
                 }, 400);
             });
         });
+    }
+
+    /**
+     * Сохранение данных в базу
+     */
+    async saveData(carDetails) {
+        try {
+            await saveData(carDetails);
+        } catch (error) {
+            console.error(`❌ Ошибка сохранения данных:`, error.message);
+        }
     }
 
     /**
