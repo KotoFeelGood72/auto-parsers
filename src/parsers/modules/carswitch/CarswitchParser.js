@@ -10,7 +10,6 @@ class CarswitchParser extends BaseParser {
         super('Carswitch', {
             baseUrl: 'https://carswitch.com',
             listingsUrl: 'https://carswitch.com/uae/used-cars/search',
-            maxPages: 50,
             ...config
         });
     }
@@ -28,7 +27,7 @@ class CarswitchParser extends BaseParser {
             try {
                 console.log("🔍 Открываем каталог Carswitch...");
 
-                while (currentPage <= this.config.maxPages) {
+                while (true) {
                     const url = `${this.config.listingsUrl}?page=${currentPage}`;
                     console.log(`📄 Загружаем страницу: ${url}`);
 

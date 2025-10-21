@@ -9,7 +9,6 @@ class DubicarsParser extends BaseParser {
         super('Dubicars', {
             baseUrl: 'https://www.dubicars.com',
             listingsUrl: 'https://www.dubicars.com/dubai/used',
-            maxPages: 50,
             ...config
         });
     }
@@ -27,7 +26,7 @@ class DubicarsParser extends BaseParser {
             try {
                 console.log("🔍 Открываем каталог Dubicars...");
 
-                while (currentPage <= this.config.maxPages) {
+                while (true) {
                     const url = this.config.listingsUrl.replace('{page}', currentPage);
                     console.log(`📄 Загружаем страницу: ${url}`);
 

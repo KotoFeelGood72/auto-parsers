@@ -93,7 +93,6 @@ class AutomarketModule {
         return {
             name: this.name,
             baseUrl: this.parser.config.baseUrl,
-            maxPages: this.parser.config.maxPages,
             timeout: this.parser.config.timeout
         };
     }

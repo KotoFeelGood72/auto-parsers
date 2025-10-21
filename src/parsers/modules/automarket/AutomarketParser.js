@@ -10,7 +10,6 @@ class AutomarketParser extends BaseParser {
         super('Automarket', {
             baseUrl: 'https://uae.dubizzle.com',
             listingsUrl: 'https://uae.dubizzle.com/motors/used-cars/',
-            maxPages: 50,
             timeout: 90000,
             delayBetweenRequests: 1000,
             maxRetries: 3,
@@ -55,7 +54,7 @@ class AutomarketParser extends BaseParser {
                     await page.goto(fullBrandUrl, { waitUntil: "domcontentloaded", timeout: this.config.timeout });
 
                     let currentPage = 1;
-                    while (currentPage <= this.config.maxPages) {
+                    while (true) {
                         console.log(`📄 Загружаем страницу ${currentPage} для бренда ${fullBrandUrl}...`);
                         await page.waitForSelector('[data-testid^="listing-"]', { timeout: 30000 });
 
@@ -424,7 +423,6 @@ class AutomarketParser extends BaseParser {
             name: this.name,
             baseUrl: this.config.baseUrl,
             listingsUrl: this.config.listingsUrl,
-            maxPages: this.config.maxPages,
             timeout: this.config.timeout
         };
     }

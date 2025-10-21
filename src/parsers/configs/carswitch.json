@@ -3,7 +3,6 @@
   "displayName": "Carswitch",
   "baseUrl": "https://carswitch.com",
   "listingsUrl": "https://carswitch.com/uae/used-cars/search",
-  "maxPages": 50,
   "timeout": 30000,
   "maxRetries": 3,
   "retryDelay": 5000,

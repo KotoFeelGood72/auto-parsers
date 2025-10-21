@@ -10,7 +10,6 @@ class OneclickdriveParser extends BaseParser {
         super('OneClickDrive', {
             baseUrl: 'https://www.oneclickdrive.com',
             listingsUrl: 'https://www.oneclickdrive.com/buy-used-cars-dubai?page={page}',
-            maxPages: 50,
             timeout: 60000,
             delayBetweenRequests: 1000,
             maxRetries: 3,
@@ -32,7 +31,7 @@ class OneclickdriveParser extends BaseParser {
             try {
                 console.log("🔍 Открываем каталог OneClickDrive...");
 
-                while (currentPage <= this.config.maxPages) {
+                while (true) {
                     const url = this.config.listingsUrl.replace('{page}', currentPage);
                     console.log(`📄 Загружаем страницу: ${url}`);
 
@@ -321,7 +320,6 @@ class OneclickdriveParser extends BaseParser {
             name: this.name,
             baseUrl: this.config.baseUrl,
             listingsUrl: this.config.listingsUrl,
-            maxPages: this.config.maxPages,
             timeout: this.config.timeout
         };
     }

@@ -10,7 +10,6 @@ class AutotradersParser extends BaseParser {
         super('AutoTraders', {
             baseUrl: 'https://www.autotraders.ae',
             listingsUrl: 'https://www.autotraders.ae/used-cars/?page={page}',
-            maxPages: 50,
             timeout: 90000,
             delayBetweenRequests: 1000,
             maxRetries: 3,
@@ -36,7 +35,7 @@ class AutotradersParser extends BaseParser {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 });
 
-                while (currentPage <= this.config.maxPages) {
+                while (true) {
                     const url = this.config.listingsUrl.replace('{page}', currentPage);
                     console.log(`📄 Загружаем страницу: ${url}`);
 
@@ -294,7 +293,6 @@ class AutotradersParser extends BaseParser {
             name: this.name,
             baseUrl: this.config.baseUrl,
             listingsUrl: this.config.listingsUrl,
-            maxPages: this.config.maxPages,
             timeout: this.config.timeout
         };
     }

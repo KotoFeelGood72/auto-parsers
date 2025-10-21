@@ -10,7 +10,6 @@ class OpenSooqParser extends BaseParser {
         super('OpenSooq', {
             baseUrl: 'https://ae.opensooq.com',
             listingsUrl: 'https://ae.opensooq.com/en/cars/cars-for-sale',
-            maxPages: 50,
             ...config
         });
     }
@@ -28,7 +27,7 @@ class OpenSooqParser extends BaseParser {
             try {
                 console.log("🔍 Открываем каталог OpenSooq...");
 
-                while (currentPage <= this.config.maxPages) {
+                while (true) {
                     const url = `${this.config.listingsUrl}/?page=${currentPage}`;
                     console.log(`📄 Загружаем страницу: ${url}`);
 
