@@ -8,6 +8,7 @@ const { OneclickdriveModule } = require('./src/parsers/modules/oneclickdrive/ind
 const { AutotradersModule } = require('./src/parsers/modules/autotraders/index');
 const { AutomarketModule } = require('./src/parsers/modules/automarket/index');
 const { CarswitchModule } = require('./src/parsers/modules/carswitch/index');
+const { OpenSooqModule } = require('./src/parsers/modules/opensooq/index');
 
 // Реестр доступных модулей
 const modules = {
@@ -16,6 +17,7 @@ const modules = {
     autotraders: AutotradersModule,
     automarket: AutomarketModule,
     carswitch: CarswitchModule,
+    opensooq: OpenSooqModule,
 };
 
 async function runModule(moduleName) {
@@ -63,6 +65,7 @@ if (!moduleName) {
     console.log('   - autotraders (автономный модуль)');
     console.log('   - automarket (автономный модуль)');
     console.log('   - carswitch (автономный модуль)');
+    console.log('   - opensooq (автономный модуль)');
     console.log('');
     console.log('💡 Использование: node run_module.js <имя_модуля>');
     process.exit(1);

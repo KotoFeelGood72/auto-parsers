@@ -1,0 +1,9 @@
+{
+  "baseUrl": "https://ae.opensooq.com",
+  "listingsUrl": "https://ae.opensooq.com/en/cars/cars-for-sale",
+  "maxPages": 50,
+  "maxRetries": 3,
+  "retryDelay": 5000,
+  "delayBetweenRequests": 2000,
+  "timeout": 30000
+}
