@@ -71,7 +71,6 @@ class DubicarsModule {
         return {
             name: this.name,
             baseUrl: this.config.baseUrl,
-            maxPages: this.config.maxPages,
             timeout: this.config.timeout
         };
     }

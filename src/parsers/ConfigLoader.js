@@ -147,7 +147,6 @@ class ConfigLoader {
         return {
             name: config.name,
             baseUrl: config.baseUrl,
-            maxPages: config.maxPages,
             timeout: config.timeout,
             delayBetweenRequests: config.delayBetweenRequests,
             enableImageLoading: config.enableImageLoading,
@@ -170,8 +169,7 @@ class ConfigLoader {
         for (const [name, config] of this.configs) {
             stats.configs.push({
                 name: config.name,
-                baseUrl: config.baseUrl,
-                maxPages: config.maxPages
+                baseUrl: config.baseUrl
             });
         }
 

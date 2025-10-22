@@ -16,7 +16,6 @@ process.on('SIGTERM', async () => {
 const mode = process.argv[2] || process.env.PARSER_MODE || 'cycle';
 const parserNames = process.argv[3] ? process.argv[3].split(',') : (process.env.PARSER_NAMES ? process.env.PARSER_NAMES.split(',') : []);
 const globalConfig = {
-    maxPages: parseInt(process.env.MAX_PAGES) || 10,
     delayBetweenRequests: parseInt(process.env.DELAY_MS) || 1000,
     enableImageLoading: process.env.ENABLE_IMAGES === 'true'
 };
