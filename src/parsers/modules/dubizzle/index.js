@@ -1,12 +1,12 @@
-const { AutomarketParser } = require('./AutomarketParser');
+const { DubizzleParser } = require('./DubizzleParser');
 
 /**
- * Модуль парсера Automarket (Dubizzle)
+ * Модуль парсера Dubizzle
  */
-class AutomarketModule {
+class DubizzleModule {
     constructor() {
-        this.name = 'Automarket';
-        this.parser = new AutomarketParser();
+        this.name = 'Dubizzle';
+        this.parser = new DubizzleParser();
     }
 
     /**
@@ -107,4 +107,4 @@ class AutomarketModule {
     }
 }
 
-module.exports = { AutomarketModule };
+module.exports = { DubizzleModule };

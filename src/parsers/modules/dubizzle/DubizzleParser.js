@@ -2,12 +2,12 @@ const { BaseParser } = require('../../BaseParser');
 const { saveData } = require('../../../utils/saveData');
 
 /**
- * Парсер для сайта Dubizzle.com (automarket)
+ * Парсер для сайта Dubizzle.com
  * Индивидуальная реализация без использования ConfigParser
  */
-class AutomarketParser extends BaseParser {
+class DubizzleParser extends BaseParser {
     constructor(config = {}) {
-        super('Automarket', {
+        super('Dubizzle', {
             baseUrl: 'https://uae.dubizzle.com',
             listingsUrl: 'https://uae.dubizzle.com/motors/used-cars/',
             timeout: 90000,
@@ -68,9 +68,9 @@ class AutomarketParser extends BaseParser {
                 console.log(`✅ Найдено ${brandLinks.length} брендов. Начинаем парсинг...`);
                 console.log(`🔍 Первые 5 брендов:`, brandLinks.slice(0, 5));
 
-                // Ограничиваем количество брендов для тестирования (первые 3)
-                const brandsToProcess = brandLinks.slice(0, 3);
-                console.log(`🔧 Обрабатываем первые ${brandsToProcess.length} брендов для тестирования`);
+                // Обрабатываем все найденные бренды
+                const brandsToProcess = brandLinks;
+                console.log(`🔧 Обрабатываем все ${brandsToProcess.length} брендов`);
 
                 for (const brandLink of brandsToProcess) {
                     const fullBrandUrl = `${this.config.baseUrl}${brandLink}`;
@@ -446,7 +446,7 @@ class AutomarketParser extends BaseParser {
 
     /**
      * Нормализация данных для сохранения в БД
-     * Переопределяем метод BaseParser для правильного маппинга полей Automarket
+     * Переопределяем метод BaseParser для правильного маппинга полей Dubizzle
      */
     normalizeData(rawData) {
         return {
@@ -503,4 +503,4 @@ class AutomarketParser extends BaseParser {
     }
 }
 
-module.exports = { AutomarketParser };
+module.exports = { DubizzleParser };

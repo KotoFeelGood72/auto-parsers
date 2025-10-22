@@ -2,7 +2,6 @@
   "name": "Example Parser",
   "baseUrl": "https://example-cars.com",
   "listingsUrl": "https://example-cars.com/cars?page={page}",
-  "maxPages": 20,
   "timeout": 30000,
   "delayBetweenRequests": 2000,
   "enableImageLoading": false,

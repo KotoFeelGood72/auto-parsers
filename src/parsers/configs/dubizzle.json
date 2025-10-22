@@ -2,7 +2,6 @@
   "name": "Dubizzle",
   "baseUrl": "https://www.dubizzle.com",
   "listingsUrl": "https://www.dubizzle.com/dubai/cars?page={page}",
-  "maxPages": 30,
   "timeout": 60000,
   "delayBetweenRequests": 1500,
   "enableImageLoading": false,

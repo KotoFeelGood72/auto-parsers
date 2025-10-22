@@ -2,7 +2,6 @@
   "name": "Dubicars",
   "baseUrl": "https://www.dubicars.com",
   "listingsUrl": "https://www.dubicars.com/dubai/used?page={page}",
-  "maxPages": 50,
   "timeout": 60000,
   "delayBetweenRequests": 1000,
   "enableImageLoading": false,

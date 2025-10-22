@@ -6,7 +6,7 @@
 const { DubicarsModule } = require('./src/parsers/modules/dubicars/index');
 const { OneclickdriveModule } = require('./src/parsers/modules/oneclickdrive/index');
 const { AutotradersModule } = require('./src/parsers/modules/autotraders/index');
-const { AutomarketModule } = require('./src/parsers/modules/automarket/index');
+const { DubizzleModule } = require('./src/parsers/modules/dubizzle/index');
 const { CarswitchModule } = require('./src/parsers/modules/carswitch/index');
 const { OpenSooqModule } = require('./src/parsers/modules/opensooq/index');
 
@@ -15,7 +15,7 @@ const modules = {
     dubicars: DubicarsModule,
     oneclickdrive: OneclickdriveModule,
     autotraders: AutotradersModule,
-    automarket: AutomarketModule,
+    dubizzle: DubizzleModule,
     carswitch: CarswitchModule,
     opensooq: OpenSooqModule,
 };
@@ -63,7 +63,7 @@ if (!moduleName) {
     console.log('   - dubicars (автономный модуль)');
     console.log('   - oneclickdrive (автономный модуль)');
     console.log('   - autotraders (автономный модуль)');
-    console.log('   - automarket (автономный модуль)');
+    console.log('   - dubizzle (автономный модуль)');
     console.log('   - carswitch (автономный модуль)');
     console.log('   - opensooq (автономный модуль)');
     console.log('');
