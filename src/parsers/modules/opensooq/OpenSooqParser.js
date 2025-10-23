@@ -10,6 +10,11 @@ class OpenSooqParser extends BaseParser {
         super('OpenSooq', {
             baseUrl: 'https://ae.opensooq.com',
             listingsUrl: 'https://ae.opensooq.com/en/cars/cars-for-sale',
+            timeout: 90000,
+            delayBetweenRequests: 2000,
+            maxRetries: 3,
+            retryDelay: 5000,
+            enableImageLoading: false,
             ...config
         });
     }
@@ -33,25 +38,78 @@ class OpenSooqParser extends BaseParser {
 
                     await page.goto(url, { 
                         waitUntil: "domcontentloaded", 
-                        timeout: 60000 
+                        timeout: 90000 
                     });
 
                     // Ждем загрузки страницы
+                    await page.waitForTimeout(5000);
+                    
+                    // Пробуем прокрутить страницу для загрузки контента
+                    await page.evaluate(() => {
+                        window.scrollTo(0, document.body.scrollHeight);
+                    });
                     await page.waitForTimeout(3000);
+                    
+                    // Пробуем прокрутить обратно
+                    await page.evaluate(() => {
+                        window.scrollTo(0, 0);
+                    });
+                    await page.waitForTimeout(2000);
 
-                    // Ждем появления элементов
+                    // Ждем появления контейнера с объявлениями
                     try {
-                        await page.waitForSelector('a.postListItemData', { timeout: 30000 });
+                        await page.waitForSelector('#serpMainContent', { timeout: 30000 });
+                        console.log("✅ Контейнер #serpMainContent найден");
+                    } catch (error) {
+                        console.warn(`⚠️ Контейнер #serpMainContent не найден на странице ${currentPage}`);
+                        break;
+                    }
+
+                    // Ждем появления объявлений
+                    try {
+                        await page.waitForSelector('.postListItemData', { timeout: 30000 });
+                        console.log("✅ Элементы .postListItemData найдены");
                     } catch (error) {
                         console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
                         break;
                     }
 
-                    const carLinks = await page.$$eval('a.postListItemData', (elements) =>
+                    // Извлекаем ссылки из объявлений
+                    const carLinks = await page.$$eval('.postListItemData', (elements) =>
                         elements
-                            .map((el) => el.getAttribute("href"))
-                            .filter((href) => href && href.startsWith("/en/search/"))
+                            .map((el) => {
+                                // Проверяем, является ли сам элемент ссылкой
+                                if (el.tagName === 'A') {
+                                    return el.getAttribute("href");
+                                }
+                                // Иначе ищем ссылку внутри элемента
+                                const link = el.querySelector('a');
+                                return link ? link.getAttribute("href") : null;
+                            })
+                            .filter((href) => href && (
+                                href.startsWith("/en/search/") ||
+                                href.startsWith("/post/") ||
+                                href.includes("/cars/") ||
+                                href.includes("/search/")
+                            ))
                     );
+
+                    // Отладочная информация
+                    const debugInfo = await page.$$eval('.postListItemData', (elements) => {
+                        return elements.slice(0, 3).map((el, index) => ({
+                            index,
+                            tagName: el.tagName,
+                            className: el.className,
+                            href: el.getAttribute("href"),
+                            innerHTML: el.innerHTML.substring(0, 200),
+                            links: Array.from(el.querySelectorAll('a')).map(a => ({
+                                href: a.href,
+                                text: a.textContent?.substring(0, 50)
+                            }))
+                        }));
+                    });
+
+                    console.log("🔍 Отладочная информация о первых 3 элементах .postListItemData:", debugInfo);
 
                     if (carLinks.length === 0) {
                         console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
@@ -76,7 +134,7 @@ class OpenSooqParser extends BaseParser {
                 }
                 
                 console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries}...`);
-                await this.sleep(this.config.retryDelay);
+                await this.sleep(this.config.retryDelay || 5000);
             } finally {
                 await page.close();
             }
