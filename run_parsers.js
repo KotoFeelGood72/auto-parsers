@@ -30,7 +30,7 @@ async function runCyclicParsing() {
         // Запускаем циклический парсинг
         let totalProcessed = 0;
         
-        for await (const result of moduleManager.runCyclicParsing(2)) { // 2 итерации для теста
+        for await (const result of moduleManager.runCyclicParsing()) { // Убрано ограничение на 2 итерации
             // Сохраняем данные в базу
             try {
                 await saveData(result.data);

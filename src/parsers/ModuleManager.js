@@ -151,12 +151,14 @@ class ParserModuleManager {
                         yield { module: module.name, data, url: listingUrl };
                     }
                     
-                    // Ограничиваем количество объявлений за одну итерацию
-                    if (count >= 3) {
-                        console.log(`✅ Обработано ${count} объявлений из модуля ${module.name}`);
-                        break;
-                    }
+                    // Ограничиваем количество объявлений за одну итерацию (убрано ограничение для полного парсинга)
+                    // if (count >= 3) {
+                    //     console.log(`✅ Обработано ${count} объявлений из модуля ${module.name}`);
+                    //     break;
+                    // }
                 }
+                
+                console.log(`✅ Модуль ${module.name} завершен. Обработано ${count} объявлений`);
             } catch (error) {
                 console.error(`❌ Ошибка в модуле ${module.name}:`, error.message);
             }
