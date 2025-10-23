@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 
 async function startBrowser() {
-    const browser = await chromium.launch({ headless: false }); // Можно true, если не нужен UI
+    const browser = await chromium.launch({ headless: true }); // Можно true, если не нужен UI
     return browser;
 }
 

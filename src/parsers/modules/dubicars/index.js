@@ -1,5 +1,6 @@
 const { DubicarsParser } = require('./DubicarsParser');
 const { configLoader } = require('../../ConfigLoader');
+const { startBrowser } = require('../../../utils/browser');
 
 /**
  * Модуль парсера Dubicars
@@ -9,6 +10,8 @@ class DubicarsModule {
         this.name = 'Dubicars';
         this.config = this.loadConfig();
         this.parser = new DubicarsParser(this.config);
+        this.browser = null;
+        this.context = null;
     }
 
     /**
@@ -43,24 +46,65 @@ class DubicarsModule {
     }
 
     /**
+     * Инициализация модуля
+     */
+    async initialize() {
+        try {
+            console.log(`🚀 Инициализация модуля ${this.name}...`);
+            
+            // Инициализируем браузер
+            const browserData = await startBrowser();
+            this.browser = browserData;
+            this.context = await this.browser.newContext();
+            
+            // Инициализируем парсер с контекстом браузера
+            await this.parser.initialize(this.context);
+            
+            console.log(`🚀 Инициализация парсера: ${this.name}`);
+            console.log(`✅ Модуль ${this.name} инициализирован`);
+            return true;
+        } catch (error) {
+            console.error(`❌ Ошибка инициализации модуля ${this.name}:`, error.message);
+            return false;
+        }
+    }
+
+    /**
      * Запуск парсера
      */
     async run() {
         try {
             console.log(`🚀 Запускаем парсер ${this.name}...`);
             
-            // Инициализируем парсер с контекстом браузера
-            await this.parser.initialize(this.context);
-            
             // Запускаем парсинг
             const results = await this.parser.run();
             
             console.log(`✅ Парсер ${this.name} завершен. Обработано: ${results.length} объявлений`);
-            return results;
+            
+            // Закрываем браузер
+            if (this.browser) {
+                await this.browser.close();
+            }
+            
+            return {
+                success: true,
+                processed: results.length,
+                results: results
+            };
             
         } catch (error) {
             console.error(`❌ Ошибка в модуле ${this.name}:`, error.message);
-            throw error;
+            
+            // Закрываем браузер при ошибке
+            if (this.browser) {
+                await this.browser.close();
+            }
+            
+            return {
+                success: false,
+                error: error.message,
+                processed: 0
+            };
         }
     }
 
