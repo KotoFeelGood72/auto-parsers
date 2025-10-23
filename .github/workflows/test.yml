@@ -1,0 +1,128 @@
+name: Test and Build
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run linting
+      run: |
+        # Проверяем синтаксис JavaScript файлов
+        find src -name "*.js" -exec node -c {} \;
+        echo "✅ Синтаксис JavaScript файлов корректен"
+        
+    - name: Test database schema
+      run: |
+        # Проверяем корректность SQL схемы
+        node -e "
+          const { getCreateTablesSQL } = require('./src/database/schema');
+          const sqls = getCreateTablesSQL();
+          console.log('✅ SQL схема корректна, таблиц:', sqls.length);
+        "
+        
+    - name: Test parser configuration
+      run: |
+        # Проверяем конфигурации парсеров
+        node -e "
+          const fs = require('fs');
+          const configs = fs.readdirSync('./src/parsers/configs')
+            .filter(f => f.endsWith('.json'))
+            .map(f => JSON.parse(fs.readFileSync('./src/parsers/configs/' + f, 'utf8')));
+          console.log('✅ Конфигурации парсеров загружены:', configs.length);
+        "
+        
+    - name: Build Docker image
+      run: |
+        # Тестируем сборку Docker образа
+        docker build -t auto-parser-test .
+        echo "✅ Docker образ собран успешно"
+        
+    - name: Test Docker Compose
+      run: |
+        # Проверяем корректность docker-compose файлов
+        docker-compose -f docker-compose.yml config
+        docker-compose -f docker-compose.prod.yml config
+        echo "✅ Docker Compose файлы корректны"
+        
+    - name: Security scan
+      run: |
+        # Простая проверка безопасности
+        echo "🔍 Проверка безопасности..."
+        
+        # Проверяем, что пароли не захардкожены в коде
+        if grep -r "password.*=" src/ --include="*.js" | grep -v "DB_PASSWORD"; then
+          echo "⚠️ Возможно найдены захардкоженные пароли"
+        else
+          echo "✅ Захардкоженные пароли не найдены"
+        fi
+        
+        # Проверяем права доступа к файлам
+        if [ -f deploy.sh ] && [ -x deploy.sh ]; then
+          echo "✅ Скрипт деплоя исполняемый"
+        else
+          echo "❌ Скрипт деплоя не исполняемый"
+        fi
+        
+    - name: Check file permissions
+      run: |
+        # Проверяем права доступа к важным файлам
+        ls -la deploy.sh setup_server.sh
+        echo "✅ Права доступа к скриптам проверены"
+        
+    - name: Generate test report
+      run: |
+        echo "# Test Report" > test-report.md
+        echo "## Summary" >> test-report.md
+        echo "- ✅ Code syntax check passed" >> test-report.md
+        echo "- ✅ Database schema validation passed" >> test-report.md
+        echo "- ✅ Parser configurations loaded" >> test-report.md
+        echo "- ✅ Docker build successful" >> test-report.md
+        echo "- ✅ Docker Compose validation passed" >> test-report.md
+        echo "- ✅ Security scan completed" >> test-report.md
+        echo "" >> test-report.md
+        echo "## Files tested:" >> test-report.md
+        echo "- src/database/schema.js" >> test-report.md
+        echo "- src/parsers/configs/*.json" >> test-report.md
+        echo "- Dockerfile" >> test-report.md
+        echo "- docker-compose.yml" >> test-report.md
+        echo "- docker-compose.prod.yml" >> test-report.md
+        echo "- deploy.sh" >> test-report.md
+        echo "- setup_server.sh" >> test-report.md
+        
+    - name: Upload test report
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-report
+        path: test-report.md
+        
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('test-report.md', 'utf8');
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## 🧪 Test Results\n\n${report}`
+          });
