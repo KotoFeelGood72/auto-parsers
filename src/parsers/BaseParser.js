@@ -14,16 +14,31 @@ class BaseParser {
             userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             ...config
         };
+        this.sourceId = null; // ID источника в базе данных
     }
 
     /**
      * Инициализация парсера
      * @param {Object} context - Контекст браузера Playwright
+     * @param {Object} databaseManager - Менеджер базы данных
      * @returns {Promise<void>}
      */
-    async initialize(context) {
+    async initialize(context, databaseManager = null) {
         this.context = context;
-        console.log(`🚀 Инициализация парсера: ${this.name}`);
+        this.databaseManager = databaseManager;
+        
+        // Получаем ID источника из базы данных
+        if (this.databaseManager) {
+            const source = await this.databaseManager.getSourceByName(this.name);
+            if (source) {
+                this.sourceId = source.id;
+                console.log(`🚀 Инициализация парсера: ${this.name} (ID источника: ${this.sourceId})`);
+            } else {
+                console.warn(`⚠️ Источник "${this.name}" не найден в базе данных`);
+            }
+        } else {
+            console.log(`🚀 Инициализация парсера: ${this.name} (без связи с БД)`);
+        }
     }
 
     /**
@@ -59,6 +74,7 @@ class BaseParser {
      */
     normalizeData(rawData) {
         return {
+            source_id: this.sourceId, // Добавляем ID источника
             short_url: rawData.short_url || null,
             title: rawData.title || "Неизвестно",
             make: rawData.make || "Неизвестно",

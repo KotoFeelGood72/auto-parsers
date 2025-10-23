@@ -47,6 +47,8 @@ class ParserRunner {
         // Инициализируем базу данных
         try {
             await databaseManager.initialize();
+            // Инициализируем источники
+            await databaseManager.initializeSources();
         } catch (error) {
             console.error("❌ База данных недоступна, используем файлы");
         }
@@ -126,7 +128,7 @@ class ParserRunner {
         this.currentParser = parser;
 
         // Инициализируем парсер
-        await parser.initialize(this.context);
+        await parser.initialize(this.context, databaseManager);
 
         let processedCount = 0;
 

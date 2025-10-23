@@ -3,11 +3,27 @@
  */
 
 /**
+ * SQL для создания таблицы sources
+ */
+const createSourcesTable = `
+    CREATE TABLE IF NOT EXISTS sources (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        display_name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    );
+`;
+
+/**
  * SQL для создания таблицы car_listings
  */
 const createCarListingsTable = `
     CREATE TABLE IF NOT EXISTS car_listings (
         id SERIAL PRIMARY KEY,
+        source_id INT REFERENCES sources(id) ON DELETE SET NULL,
         short_url TEXT UNIQUE NOT NULL,
         title TEXT DEFAULT 'Неизвестно',
         make TEXT DEFAULT 'Неизвестно',
@@ -50,6 +66,9 @@ const createCarPhotosTable = `
  * SQL для создания индексов
  */
 const createIndexes = [
+    `CREATE INDEX IF NOT EXISTS idx_sources_name ON sources(name);`,
+    `CREATE INDEX IF NOT EXISTS idx_sources_is_active ON sources(is_active);`,
+    `CREATE INDEX IF NOT EXISTS idx_car_listings_source_id ON car_listings(source_id);`,
     `CREATE INDEX IF NOT EXISTS idx_car_listings_short_url ON car_listings(short_url);`,
     `CREATE INDEX IF NOT EXISTS idx_car_listings_make ON car_listings(make);`,
     `CREATE INDEX IF NOT EXISTS idx_car_listings_model ON car_listings(model);`,
@@ -71,6 +90,12 @@ const createTriggers = [
      END;
      $$ language 'plpgsql';`,
     
+    `DROP TRIGGER IF EXISTS update_sources_updated_at ON sources;
+     CREATE TRIGGER update_sources_updated_at
+         BEFORE UPDATE ON sources
+         FOR EACH ROW
+         EXECUTE FUNCTION update_updated_at_column();`,
+    
     `DROP TRIGGER IF EXISTS update_car_listings_updated_at ON car_listings;
      CREATE TRIGGER update_car_listings_updated_at
          BEFORE UPDATE ON car_listings
@@ -83,6 +108,7 @@ const createTriggers = [
  */
 const fullSchema = {
     tables: {
+        sources: createSourcesTable,
         car_listings: createCarListingsTable,
         car_photos: createCarPhotosTable
     },
@@ -96,6 +122,7 @@ const fullSchema = {
  */
 function getCreateTablesSQL() {
     return [
+        createSourcesTable,
         createCarListingsTable,
         createCarPhotosTable
     ];
@@ -132,7 +159,8 @@ function getFullSchema() {
 function getDropTablesSQL() {
     return [
         'DROP TABLE IF EXISTS car_photos CASCADE;',
-        'DROP TABLE IF EXISTS car_listings CASCADE;'
+        'DROP TABLE IF EXISTS car_listings CASCADE;',
+        'DROP TABLE IF EXISTS sources CASCADE;'
     ];
 }
 
@@ -145,11 +173,12 @@ function getCheckTablesSQL() {
         `SELECT table_name 
          FROM information_schema.tables 
          WHERE table_schema = 'public' 
-         AND table_name IN ('car_listings', 'car_photos');`
+         AND table_name IN ('sources', 'car_listings', 'car_photos');`
     ];
 }
 
 module.exports = {
+    createSourcesTable,
     createCarListingsTable,
     createCarPhotosTable,
     createIndexes,
