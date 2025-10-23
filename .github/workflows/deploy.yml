@@ -35,15 +35,46 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_KEY }}
         port: ${{ secrets.SERVER_PORT || 22 }}
+        timeout: 300s
+        command_timeout: 300s
         script: |
+          set -e
+          echo "🚀 Starting deployment..."
+          
           # Переходим в директорию проекта
-          cd /root/auto-parsers
+          cd /root/auto-parsers || {
+            echo "❌ Directory /root/auto-parsers not found"
+            exit 1
+          }
           
-          # Запускаем скрипт деплоя
-          chmod +x deploy.sh
-          ./deploy.sh
+          echo "📁 Current directory: $(pwd)"
+          echo "📋 Directory contents:"
+          ls -la
           
-          echo "Deployment completed successfully!"
+          # Проверяем наличие скрипта деплоя
+          if [ ! -f "deploy.sh" ]; then
+            echo "❌ deploy.sh not found, creating basic deployment..."
+            
+            # Останавливаем контейнеры если запущены
+            docker-compose down || true
+            
+            # Получаем последние изменения
+            git pull origin main || git pull origin master || true
+            
+            # Запускаем контейнеры
+            docker-compose up -d --build || {
+              echo "❌ Docker compose failed"
+              exit 1
+            }
+            
+            echo "✅ Basic deployment completed"
+          else
+            echo "🔧 Running deploy.sh script..."
+            chmod +x deploy.sh
+            ./deploy.sh
+          fi
+          
+          echo "✅ Deployment completed successfully!"
           
     - name: Notify deployment status
       if: always()
