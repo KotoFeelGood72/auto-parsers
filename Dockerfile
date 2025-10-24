@@ -1,15 +1,8 @@
-# Используем стандартный образ Node.js
-FROM node:18-bullseye-slim
-
-# Устанавливаем системные зависимости для Playwright
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Используем образ с Playwright
+FROM mcr.microsoft.com/playwright:v1.50.1-jammy
 
 # Создаем пользователя для безопасности
-RUN groupadd -r parser && useradd -r -g parser parser
+RUN groupadd -r parser && useradd -r -g parser -m parser
 
 # Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
@@ -19,7 +12,6 @@ COPY package*.json ./
 
 # Устанавливаем зависимости (включая Playwright)
 RUN npm ci --only=production && \
-    npx playwright install --with-deps chromium && \
     npm cache clean --force
 
 # Копируем весь код парсера в контейнер
@@ -31,6 +23,9 @@ RUN mkdir -p /app/data /app/logs && \
 
 # Переключаемся на пользователя parser
 USER parser
+
+# Устанавливаем браузеры Playwright под пользователем parser
+RUN npx playwright install chromium
 
 # Открываем порт (если потребуется)
 EXPOSE 3000
