@@ -14,7 +14,6 @@
     "docker:logs": "docker-compose logs -f parser",
     "docker:clean-db": "docker-compose run --rm db psql -U root -d auto_db -c \"TRUNCATE TABLE car_photos CASCADE;\" && docker-compose run --rm db psql -U root -d auto_db -c \"TRUNCATE TABLE car_listings CASCADE;\"",
     "start:local": "DB_HOST=77.232.138.181 DB_PORT=5432 DB_NAME=auto_db DB_USER=root DB_PASSWORD=P@rs3r_S3cR3t! node --expose-gc --max-old-space-size=512 src/index.js cycle",
-    "module:local": "DB_HOST=77.232.138.181 DB_PORT=5432 DB_NAME=auto_db DB_USER=root DB_PASSWORD=P@rs3r_S3cR3t! node run_module.js",
     "test": "echo 'No tests configured yet' && exit 0",
     "test:syntax": "find src -name '*.js' -exec node -c {} \\;",
     "test:config": "node -e \"const { getCreateTablesSQL } = require('./src/database/schema'); console.log('Schema OK:', getCreateTablesSQL().length, 'tables');\""

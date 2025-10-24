@@ -39,7 +39,37 @@ class CarswitchModule {
      * Парсинг детальной информации об объявлении
      */
     async parseListing(url) {
-        return await this.parser.parseCarDetails(url);
+        return await this.parser.parseListing(url);
+    }
+
+    /**
+     * Инициализация модуля
+     */
+    async initialize(context, databaseManager) {
+        this.context = context;
+        this.databaseManager = databaseManager;
+        return await this.parser.initialize(context, databaseManager);
+    }
+
+    /**
+     * Валидация данных
+     */
+    validateData(data) {
+        return this.parser.validateData ? this.parser.validateData(data) : true;
+    }
+
+    /**
+     * Нормализация данных
+     */
+    normalizeData(data) {
+        return this.parser.normalizeData ? this.parser.normalizeData(data) : data;
+    }
+
+    /**
+     * Очистка ресурсов
+     */
+    async cleanup() {
+        return await this.parser.cleanup ? this.parser.cleanup() : Promise.resolve();
     }
 
     /**

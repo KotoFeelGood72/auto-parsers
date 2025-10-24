@@ -1,8 +1,8 @@
 const { configLoader } = require('./ConfigLoader');
 const { startBrowser, logMemoryUsage, forceGarbageCollection } = require('../utils/browser');
-const { MemoryManager } = require('../utils/memoryManager');
 const { saveData } = require('../utils/saveData');
 const { databaseManager } = require('../database/database');
+const { ParserModuleManager } = require('./ModuleManager');
 
 /**
  * Система циклического запуска парсеров
@@ -13,7 +13,7 @@ class ParserRunner {
         this.currentParser = null;
         this.browser = null;
         this.context = null;
-        this.memoryManager = null;
+        this.memoryCheckCounter = 0;
         this.parserQueue = [];
         this.parserStats = new Map();
     }
@@ -64,14 +64,8 @@ class ParserRunner {
             return;
         }
 
-        // Инициализируем менеджер памяти
-        this.memoryManager = new MemoryManager();
-        this.memoryManager.setConfig({
-            memoryCheckInterval: 3,
-            forceCleanupInterval: 10,
-            maxMemoryMB: 512,
-            cleanupThreshold: 0.7
-        });
+        // Инициализируем счетчик для проверки памяти
+        this.memoryCheckCounter = 0;
 
         // Запускаем цикл парсинга
         await this.runCycle(globalConfig);
@@ -123,8 +117,13 @@ class ParserRunner {
             return;
         }
 
-        // Создаем парсер
-        const parser = configLoader.createParser(parserName, globalConfig);
+        // Создаем парсер через ModuleManager
+        const moduleManager = new ParserModuleManager();
+        const parser = moduleManager.getModule(parserName);
+        if (!parser) {
+            console.error(`❌ Парсер ${parserName} не найден в модулях`);
+            return;
+        }
         this.currentParser = parser;
 
         // Инициализируем парсер
@@ -143,10 +142,12 @@ class ParserRunner {
                         const normalizedData = parser.normalizeData(rawData);
                         await saveData(normalizedData);
                         processedCount++;
-                        this.memoryManager.increment();
+                        this.memoryCheckCounter++;
 
-                        // Проверяем и выполняем очистку памяти при необходимости
-                        await this.memoryManager.checkAndCleanup();
+                        // Проверяем память каждые 10 обработанных элементов
+                        if (this.memoryCheckCounter % 10 === 0) {
+                            logMemoryUsage();
+                        }
                     }
                 } catch (error) {
                     console.error(`❌ Ошибка обработки: ${error.message}`);
@@ -252,7 +253,21 @@ class ParserRunner {
             currentParser: this.currentParser?.name || null,
             parserQueue: [...this.parserQueue],
             parserStats: Object.fromEntries(this.parserStats),
-            memoryStats: this.memoryManager?.getMemoryStats() || null
+            memoryStats: this.getMemoryStats()
+        };
+    }
+
+    /**
+     * Получение статистики памяти
+     */
+    getMemoryStats() {
+        const usage = process.memoryUsage();
+        return {
+            heapUsed: Math.round(usage.heapUsed / 1024 / 1024),
+            heapTotal: Math.round(usage.heapTotal / 1024 / 1024),
+            external: Math.round(usage.external / 1024 / 1024),
+            rss: Math.round(usage.rss / 1024 / 1024),
+            processedCount: this.memoryCheckCounter
         };
     }
 

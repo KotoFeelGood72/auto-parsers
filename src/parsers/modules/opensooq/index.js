@@ -39,7 +39,7 @@ class OpenSooqModule {
      * Парсинг детальной информации об объявлении
      */
     async parseListing(url) {
-        return await this.parser.parseCarDetails(url);
+        return await this.parser.parseListing(url);
     }
 
     /**

@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { runCyclicParsing } = require("../run_parsers");
+const { ParserRunner } = require('./parsers/ParserRunner');
 
 // Обработка сигналов для корректного завершения
 process.on('SIGINT', async () => {
@@ -22,12 +22,14 @@ const globalConfig = {
 
 // Запускаем парсер
 (async () => {
+    const parserRunner = new ParserRunner();
+    
     if (mode === 'cycle') {
         console.log("🔄 Циклический режим");
-        await runCyclicParsing();
+        await parserRunner.startCycling(parserNames, globalConfig);
     } else if (mode === 'single') {
         console.log("🎯 Одиночный режим");
-        await runCyclicParsing();
+        await parserRunner.startCycling(parserNames, globalConfig);
     } else {
         console.error(`❌ Неизвестный режим: ${mode}`);
         console.log("Доступные режимы: cycle, single");
