@@ -2,7 +2,7 @@
 
 services:
   db:
-    image: bitnami/postgresql
+    image: postgres:15
     container_name: auto_db
     ports:
       - "5432:5432"
@@ -10,9 +10,8 @@ services:
       - POSTGRES_USER=root
       - POSTGRES_PASSWORD=P@rs3r_S3cR3t!
       - POSTGRES_DB=auto_db
-      - POSTGRESQL_MAX_CONNECTIONS=10000
     volumes:
-      - postgres_data:/bitnami/postgresql
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - network
 
