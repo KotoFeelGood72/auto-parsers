@@ -68,13 +68,13 @@ class ParserRunner {
         this.memoryCheckCounter = 0;
 
         // Запускаем цикл парсинга
-        await this.runCycle(globalConfig);
+        await this.runCycle(globalConfig, databaseManager);
     }
 
     /**
      * Основной цикл парсинга
      */
-    async runCycle(globalConfig = {}) {
+    async runCycle(globalConfig = {}, databaseManager = null) {
         let cycleCount = 0;
 
         while (this.isRunning) {
@@ -85,7 +85,7 @@ class ParserRunner {
                 if (!this.isRunning) break;
 
                 try {
-                    await this.runParser(parserName, globalConfig);
+                    await this.runParser(parserName, globalConfig, databaseManager);
                 } catch (error) {
                     console.error(`❌ Ошибка парсера ${parserName}: ${error.message}`);
                 }
@@ -108,7 +108,7 @@ class ParserRunner {
     /**
      * Запуск одного парсера
      */
-    async runParser(parserName, globalConfig = {}) {
+    async runParser(parserName, globalConfig = {}, databaseManager = null) {
         console.log(`🎯 ${parserName}`);
 
         // Проверяем доступность парсера

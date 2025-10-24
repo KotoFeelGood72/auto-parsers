@@ -123,8 +123,8 @@ class CarswitchModule {
             this.browser = await startBrowser();
             this.context = await this.browser.newContext();
             
-            // Инициализируем парсер с контекстом
-            await this.parser.initialize(this.context);
+            // Инициализируем парсер с контекстом и databaseManager
+            await this.parser.initialize(this.context, this.databaseManager);
             
             console.log(`✅ Модуль ${this.name} инициализирован`);
             return true;

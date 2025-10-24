@@ -1,9 +1,11 @@
 const { BaseParser } = require('../../BaseParser');
+const { OpenSooqListingParser } = require('./entities/listing');
+const { OpenSooqDetailParser } = require('./entities/detail');
 const { saveData } = require('../../../utils/saveData');
 
 /**
  * Парсер для сайта OpenSooq.com
- * Основан на коде из ветки opensooq
+ * Использует модульную структуру с отдельными парсерами для списков и деталей
  */
 class OpenSooqParser extends BaseParser {
     constructor(config) {
@@ -17,135 +19,24 @@ class OpenSooqParser extends BaseParser {
             enableImageLoading: false,
             ...config
         });
+        
+        // Инициализируем парсеры
+        this.listingParser = new OpenSooqListingParser(this.config);
+        this.detailParser = new OpenSooqDetailParser(this.config);
     }
 
     /**
      * Получение списка объявлений
      */
     async* getListings() {
-        let attempt = 0;
-        let currentPage = 1;
-
-        while (attempt < this.config.maxRetries) {
-            const page = await this.createPage();
-
-            try {
-                console.log("🔍 Открываем каталог OpenSooq...");
-
-                while (true) {
-                    const url = `${this.config.listingsUrl}/?page=${currentPage}`;
-                    console.log(`📄 Загружаем страницу: ${url}`);
-
-                    await page.goto(url, { 
-                        waitUntil: "domcontentloaded", 
-                        timeout: 90000 
-                    });
-
-                    // Ждем загрузки страницы
-                    await page.waitForTimeout(5000);
-                    
-                    // Пробуем прокрутить страницу для загрузки контента
-                    await page.evaluate(() => {
-                        window.scrollTo(0, document.body.scrollHeight);
-                    });
-                    await page.waitForTimeout(3000);
-                    
-                    // Пробуем прокрутить обратно
-                    await page.evaluate(() => {
-                        window.scrollTo(0, 0);
-                    });
-                    await page.waitForTimeout(2000);
-
-                    // Ждем появления контейнера с объявлениями
-                    try {
-                        await page.waitForSelector('#serpMainContent', { timeout: 30000 });
-                        console.log("✅ Контейнер #serpMainContent найден");
-                    } catch (error) {
-                        console.warn(`⚠️ Контейнер #serpMainContent не найден на странице ${currentPage}`);
-                        break;
-                    }
-
-                    // Ждем появления объявлений
-                    try {
-                        await page.waitForSelector('.postListItemData', { timeout: 30000 });
-                        console.log("✅ Элементы .postListItemData найдены");
-                    } catch (error) {
-                        console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
-                        break;
-                    }
-
-                    // Извлекаем ссылки из объявлений
-                    const carLinks = await page.$$eval('.postListItemData', (elements) =>
-                        elements
-                            .map((el) => {
-                                // Проверяем, является ли сам элемент ссылкой
-                                if (el.tagName === 'A') {
-                                    return el.getAttribute("href");
-                                }
-                                // Иначе ищем ссылку внутри элемента
-                                const link = el.querySelector('a');
-                                return link ? link.getAttribute("href") : null;
-                            })
-                            .filter((href) => href && (
-                                href.startsWith("/en/search/") ||
-                                href.startsWith("/post/") ||
-                                href.includes("/cars/") ||
-                                href.includes("/search/")
-                            ))
-                    );
-
-                    // Отладочная информация
-                    const debugInfo = await page.$$eval('.postListItemData', (elements) => {
-                        return elements.slice(0, 3).map((el, index) => ({
-                            index,
-                            tagName: el.tagName,
-                            className: el.className,
-                            href: el.getAttribute("href"),
-                            innerHTML: el.innerHTML.substring(0, 200),
-                            links: Array.from(el.querySelectorAll('a')).map(a => ({
-                                href: a.href,
-                                text: a.textContent?.substring(0, 50)
-                            }))
-                        }));
-                    });
-
-                    console.log("🔍 Отладочная информация о первых 3 элементах .postListItemData:", debugInfo);
-
-                    if (carLinks.length === 0) {
-                        console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
-                        break;
-                    }
-
-                    console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
-
-                    for (const link of carLinks) {
-                        yield `${this.config.baseUrl}${link}`;
-                    }
-                    currentPage++;
-                }
-
-                break; // Успешно завершили парсинг
-            } catch (error) {
-                console.error(`❌ Ошибка при парсинге страницы ${currentPage}:`, error);
-                attempt++;
-                
-                if (attempt >= this.config.maxRetries) {
-                    throw error;
-                }
-                
-                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries}...`);
-                await this.sleep(this.config.retryDelay || 5000);
-            } finally {
-                await page.close();
-            }
-        }
+        yield* this.listingParser.getListings(this.context);
     }
 
     /**
      * Парсинг детальной информации об объявлении
      */
     async parseListing(url) {
-        return await this.parseCarDetails(url);
+        return await this.detailParser.parseCarDetails(url, this.context);
     }
 
     /**
@@ -155,26 +46,23 @@ class OpenSooqParser extends BaseParser {
         const results = [];
         
         try {
-            console.log(`🚀 Запуск парсера ${this.name}...`);
+            console.log(`🚀 Запускаем парсер ${this.name}...`);
             
+            // Получаем список объявлений и парсим каждое
             for await (const listingUrl of this.getListings()) {
                 console.log(`🚗 Обрабатываем ${listingUrl}`);
                 
-                const data = await this.parseListing(listingUrl);
-                if (data && this.validateData(data)) {
-                    const normalizedData = this.normalizeData(data);
-                    results.push(normalizedData);
-                    
-                    // Сохраняем данные в базу
-                    await this.saveData(normalizedData);
-                    
-                    console.log(`✅ Обработано объявление: ${data.title}`);
-                } else {
-                    console.log(`⚠️ Пропущено объявление (невалидные данные): ${listingUrl}`);
+                try {
+                    const carDetails = await this.parseListing(listingUrl);
+                    if (carDetails) {
+                        results.push(carDetails);
+                        
+                        // Сохраняем данные в базу
+                        await this.saveData(carDetails);
+                    }
+                } catch (error) {
+                    console.error(`❌ Ошибка при обработке ${listingUrl}:`, error);
                 }
-                
-                // Пауза между запросами
-                await this.sleep(this.config.delayBetweenRequests);
             }
             
             console.log(`✅ Парсер ${this.name} завершен. Обработано: ${results.length} объявлений`);
@@ -183,110 +71,39 @@ class OpenSooqParser extends BaseParser {
         } catch (error) {
             console.error(`❌ Ошибка в парсере ${this.name}:`, error.message);
             throw error;
-        }
-    }
-
-    /**
-     * Парсинг детальной страницы автомобиля
-     */
-    async parseCarDetails(url) {
-        const page = await this.createPage();
-
-        try {
-            console.log(`🚗 Переходим к ${url}`);
-            
-            await page.setExtraHTTPHeaders({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            });
-
-            await page.goto(url, {
-                waitUntil: "domcontentloaded",
-                timeout: 30000
-            });
-
-            console.log("📄 Загружаем данные...");
-
-            // Извлекаем основные поля
-            const title = await this.safeEval(page, "h1", el => el.textContent.trim()) || "Не указано";
-
-            const priceFormatted = await this.safeEval(page, "[data-id='post_price']", el => el.textContent.replace(/[^\d,]/g, "").trim()) || "";
-            const priceRaw = priceFormatted ? parseFloat(priceFormatted.replace(/,/g, "")) : null;
-            const currency = "AED";
-
-            const location = await this.safeEval(page, "a[data-id='location']", el => el.textContent.trim()) || "Не указано";
-
-            // Получаем фотографии
-            const photos = await page.$$eval(".image-gallery-slide img.image-gallery-image", imgs =>
-                imgs.map(img => img.src).filter(src => src)
-            ) || [];
-
-            const sellerName = await this.safeEval(page, "[data-id='member_name']", el => el.textContent.trim()) || "Не указан";
-            const sellerLogo = await this.safeEval(page, "#PostViewOwnerCard img", img => img.src) || null;
-            const sellerProfileLink = await this.safeEval(page, "#PostViewOwnerCard a", a => a.href) || null;
-
-            const phoneNumber = await this.safeEval(page, "[data-id='call_btn'] span", el => el.textContent.trim()) || "Не указан";
-            const motors_trim = await this.safeEval(page, "[data-id='singeInfoField_3'] a", el => el.textContent.trim()) || "Не указано";
-            const bodyType = await this.safeEval(page, "[data-id='singeInfoField_6'] span", el => el.textContent.trim()) || "Не указано";
-            const fuelType = await this.safeEval(page, "[data-id='singeInfoField_8'] span", el => el.textContent.trim()) || "Не указано";
-            const kilometers = await this.safeEval(page, "[data-id='singeInfoField_5'] span", el => el.textContent.trim()) || "0";
-            const make = await this.safeEval(page, "[data-id='singeInfoField_1'] a", el => el.textContent.trim()) || "Не указано";
-            const exteriorColor = await this.safeEval(page, "[data-id='singeInfoField_11'] a", el => el.textContent.trim()) || "Не указано";
-            const year = await this.safeEval(page, "[data-id='singeInfoField_4'] a", el => el.textContent.trim()) || "0";
-            const model = await this.safeEval(page, "[data-id='singeInfoField_2'] a", el => el.textContent.trim()) || "Не указано";
-            const horsepower = await this.safeEval(page, "[data-id='singeInfoField_10'] span", el => el.textContent.trim()) || null;
-
-            // Составляем итоговый объект
-            const carDetails = {
-                short_url: url,
-                title,
-                photos,
-                main_image: photos.length > 0 ? photos[0] : null,
-                make: make,
-                model: model,
-                year: year,
-                body_type: bodyType,
-                horsepower: horsepower,
-                fuel_type: fuelType,
-                motors_trim: motors_trim,
-                kilometers: kilometers,
-                sellers: {
-                    sellerName: sellerName,
-                    sellerType: "Дилер",
-                    sellerLogo: sellerLogo,
-                    sellerProfileLink: sellerProfileLink,
-                },
-                price: {
-                    formatted: priceFormatted,
-                    raw: priceRaw,
-                    currency: currency,
-                },
-                exterior_color: exteriorColor,
-                location: location,
-                contact: {
-                    phone: phoneNumber,
-                },
-            };
-
-            console.log("✅ Данные автомобиля успешно извлечены");
-            return carDetails;
-
-        } catch (error) {
-            console.error(`❌ Ошибка при загрузке данных с ${url}:`, error);
-            return null;
         } finally {
-            await page.close();
+            await this.cleanup();
         }
     }
 
     /**
-     * Безопасное выполнение eval на странице
+     * Нормализация данных для сохранения в БД
      */
-    async safeEval(page, selector, fn) {
-        try {
-            return await page.$eval(selector, fn);
-        } catch {
-            return null;
-        }
+    normalizeData(rawData) {
+        return {
+            short_url: rawData.short_url || null,
+            title: rawData.title || "Неизвестно",
+            make: rawData.make || "Неизвестно",
+            model: rawData.model || "Неизвестно",
+            year: rawData.year || "Неизвестно",
+            body_type: rawData.body_type || "Неизвестно",
+            horsepower: rawData.horsepower || "Неизвестно",
+            fuel_type: rawData.fuel_type || "Неизвестно",
+            motors_trim: rawData.motors_trim || "Неизвестно",
+            kilometers: parseInt(rawData.kilometers, 10) || 0,
+            price_formatted: rawData.price?.formatted || "0",
+            price_raw: rawData.price?.raw || 0,
+            currency: rawData.price?.currency || "Неизвестно",
+            exterior_color: rawData.exterior_color || "Неизвестно",
+            location: rawData.location || "Неизвестно",
+            phone: rawData.contact?.phone || "Не указан",
+            seller_name: rawData.sellers?.sellerName || "Неизвестен",
+            seller_type: rawData.sellers?.sellerType || "Неизвестен",
+            seller_logo: rawData.sellers?.sellerLogo || null,
+            seller_profile_link: rawData.sellers?.sellerProfileLink || null,
+            main_image: rawData.main_image || null,
+            photos: rawData.photos || []
+        };
     }
 
     /**
@@ -294,17 +111,23 @@ class OpenSooqParser extends BaseParser {
      */
     async saveData(carDetails) {
         try {
-            await saveData(carDetails);
+            const normalizedData = this.normalizeData(carDetails);
+            await saveData(normalizedData);
         } catch (error) {
             console.error(`❌ Ошибка сохранения данных:`, error.message);
         }
     }
 
     /**
-     * Утилита для паузы
+     * Получение информации о парсере
      */
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    getInfo() {
+        return {
+            name: this.name,
+            baseUrl: this.config.baseUrl,
+            listingsUrl: this.config.listingsUrl,
+            timeout: this.config.timeout
+        };
     }
 }
 
