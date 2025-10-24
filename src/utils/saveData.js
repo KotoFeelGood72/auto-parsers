@@ -21,14 +21,28 @@ async function saveData(carDetails) {
         client = await pool.connect();
         await client.query("BEGIN");
 
+        // Определяем источник на основе URL
+        let source = "unknown";
+        if (carDetails.short_url) {
+            if (carDetails.short_url.includes('carswitch.com')) {
+                source = 'https://carswitch.com';
+            } else if (carDetails.short_url.includes('dubizzle.com')) {
+                source = 'https://uae.dubizzle.com';
+            } else if (carDetails.short_url.includes('dubicars.com')) {
+                source = 'https://dubicars.com';
+            } else if (carDetails.short_url.includes('opensooq.com')) {
+                source = 'https://ae.opensooq.com';
+            }
+        }
+
         const upsertCarQuery = `
             INSERT INTO car_listings (
                 short_url, title, make, model, year, body_type, horsepower, fuel_type, 
                 motors_trim, kilometers, price_formatted, price_raw, currency, 
-                exterior_color, location, phone, seller_name, seller_type, seller_logo, seller_profile_link, main_image
+                exterior_color, location, phone, seller_name, seller_type, seller_logo, seller_profile_link, main_image, source
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 
-                $14, $15, $16, $17, $18, $19, $20, $21
+                $14, $15, $16, $17, $18, $19, $20, $21, $22
             ) ON CONFLICT (short_url) DO UPDATE SET
                 title = EXCLUDED.title,
                 make = EXCLUDED.make,
@@ -49,7 +63,8 @@ async function saveData(carDetails) {
                 seller_type = EXCLUDED.seller_type,
                 seller_logo = EXCLUDED.seller_logo,
                 seller_profile_link = EXCLUDED.seller_profile_link,
-                main_image = EXCLUDED.main_image
+                main_image = EXCLUDED.main_image,
+                source = EXCLUDED.source
             RETURNING id;
         `;
 
@@ -75,6 +90,7 @@ async function saveData(carDetails) {
             carDetails.seller_logo || carDetails.sellers?.sellerLogo || null,
             carDetails.seller_profile_link || carDetails.sellers?.sellerProfileLink || null,
             carDetails.main_image || null,
+            source
         ];
 
         // Подробное логирование данных перед записью
