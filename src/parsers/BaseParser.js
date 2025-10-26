@@ -1,3 +1,5 @@
+const { errorHandler } = require('../services/ErrorHandler');
+
 /**
  * Базовый класс для всех парсеров
  * Определяет интерфейс, который должен реализовать каждый парсер
@@ -84,7 +86,7 @@ class BaseParser {
             horsepower: rawData.horsepower || "Неизвестно",
             fuel_type: rawData.fuel_type || "Неизвестно",
             motors_trim: rawData.motors_trim || "Неизвестно",
-            kilometers: parseInt(rawData.kilometers, 10) || 0,
+            kilometers: rawData.kilometers || "Неизвестно",
             price_formatted: rawData.price?.formatted || "0",
             price_raw: rawData.price?.raw || 0,
             currency: rawData.price?.currency || "Неизвестно",
@@ -132,6 +134,11 @@ class BaseParser {
             return await page.$eval(selector, callback);
         } catch (error) {
             console.warn(`⚠️ Ошибка при парсинге селектора ${selector}:`, error.message);
+            await errorHandler.handleParsingError(this.name, error, {
+                selector,
+                parserName: this.name,
+                context: 'safeEval'
+            });
             return null;
         }
     }

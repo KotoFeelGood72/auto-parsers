@@ -78,7 +78,7 @@ async function saveData(carDetails) {
             carDetails.horsepower || "Неизвестно",
             carDetails.fuel_type || "Неизвестно",
             carDetails.motors_trim || "Неизвестно",
-            parseInt(carDetails.kilometers, 10) || 0,
+            carDetails.kilometers || '0',
             carDetails.price_formatted || carDetails.price?.formatted || "0",
             carDetails.price_raw || carDetails.price?.raw || 0,
             carDetails.currency || carDetails.price?.currency || "Неизвестно",

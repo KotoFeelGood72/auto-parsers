@@ -3,6 +3,8 @@ const { startBrowser, logMemoryUsage, forceGarbageCollection } = require('../uti
 const { saveData } = require('../utils/saveData');
 const { databaseManager } = require('../database/database');
 const { ParserModuleManager } = require('./ModuleManager');
+const { errorHandler } = require('../services/ErrorHandler');
+const { telegramService } = require('../services/TelegramService');
 
 /**
  * Система циклического запуска парсеров
@@ -44,6 +46,14 @@ class ParserRunner {
         
         console.log(`🚀 Запуск парсеров: ${parserNames.join(', ')}`);
 
+        // Отправляем уведомление о запуске парсеров
+        if (telegramService.getStatus().enabled) {
+            await telegramService.sendParserStartNotification('ParserRunner', { 
+                mode: 'cycle',
+                parsers: parserNames.join(', ')
+            });
+        }
+
         // Инициализируем базу данных
         try {
             await databaseManager.initialize();
@@ -51,6 +61,10 @@ class ParserRunner {
             await databaseManager.initializeSources();
         } catch (error) {
             console.error("❌ База данных недоступна, используем файлы");
+            await errorHandler.handleSystemError('database', error, {
+                component: 'ParserRunner',
+                action: 'initialize'
+            });
         }
 
         // Инициализируем браузер
@@ -60,6 +74,10 @@ class ParserRunner {
             this.context = browserData.context;
         } catch (error) {
             console.error("❌ Не удалось инициализировать браузер:", error);
+            await errorHandler.handleBrowserError('ParserRunner', error, {
+                component: 'ParserRunner',
+                action: 'startBrowser'
+            });
             this.isRunning = false;
             return;
         }
@@ -88,6 +106,11 @@ class ParserRunner {
                     await this.runParser(parserName, globalConfig, databaseManager);
                 } catch (error) {
                     console.error(`❌ Ошибка парсера ${parserName}: ${error.message}`);
+                    await errorHandler.handleParserError(parserName, error, {
+                        parserName,
+                        cycleCount,
+                        context: 'parser_runner'
+                    });
                 }
 
                 // Пауза между парсерами
@@ -114,6 +137,11 @@ class ParserRunner {
         // Проверяем доступность парсера
         if (!configLoader.getAvailableConfigs().includes(parserName)) {
             console.error(`❌ Парсер ${parserName} не найден!`);
+            const error = new Error(`Парсер ${parserName} не найден`);
+            await errorHandler.handleParserError(parserName, error, {
+                parserName,
+                context: 'parser_not_found'
+            });
             return;
         }
 
@@ -122,12 +150,26 @@ class ParserRunner {
         const parser = moduleManager.getModule(parserName);
         if (!parser) {
             console.error(`❌ Парсер ${parserName} не найден в модулях`);
+            const error = new Error(`Парсер ${parserName} не найден в модулях`);
+            await errorHandler.handleParserError(parserName, error, {
+                parserName,
+                context: 'parser_not_found'
+            });
             return;
         }
         this.currentParser = parser;
 
         // Инициализируем парсер
-        await parser.initialize(this.context, databaseManager);
+        try {
+            await parser.initialize(this.context, databaseManager);
+        } catch (error) {
+            console.error(`❌ Ошибка инициализации парсера ${parserName}:`, error);
+            await errorHandler.handleParserError(parserName, error, {
+                parserName,
+                context: 'parser_initialization'
+            });
+            return;
+        }
 
         let processedCount = 0;
 
@@ -151,20 +193,41 @@ class ParserRunner {
                     }
                 } catch (error) {
                     console.error(`❌ Ошибка обработки: ${error.message}`);
+                    await errorHandler.handleParsingError(parserName, error, {
+                        url: link,
+                        parserName,
+                        context: 'listing_processing'
+                    });
                 }
             }
 
             // Обновляем статистику парсера
             this.updateParserStats(parserName, processedCount);
 
+            // Отправляем уведомление об успешном завершении
+            if (telegramService.getStatus().enabled && processedCount > 0) {
+                await telegramService.sendParserSuccessNotification(parserName, {
+                    processed: processedCount,
+                    duration: 'completed'
+                });
+            }
+
         } catch (error) {
             console.error(`❌ Ошибка парсинга ${parserName}: ${error.message}`);
+            await errorHandler.handleParserError(parserName, error, {
+                parserName,
+                context: 'main_parsing_loop'
+            });
         } finally {
             // Очищаем ресурсы парсера
             try {
                 await parser.cleanup();
             } catch (cleanupError) {
                 console.error("❌ Ошибка очистки:", cleanupError.message);
+                await errorHandler.handleSystemError('parser_cleanup', cleanupError, {
+                    parserName,
+                    context: 'cleanup'
+                });
             }
         }
 
@@ -201,6 +264,10 @@ class ParserRunner {
                 await this.currentParser.cleanup();
             } catch (error) {
                 console.error("❌ Ошибка очистки парсера:", error.message);
+                await errorHandler.handleSystemError('parser_cleanup', error, {
+                    component: 'ParserRunner',
+                    action: 'stop_cleanup'
+                });
             }
         }
 
@@ -210,6 +277,10 @@ class ParserRunner {
                 await this.context.close();
             } catch (error) {
                 console.error("❌ Ошибка закрытия контекста:", error.message);
+                await errorHandler.handleBrowserError('ParserRunner', error, {
+                    component: 'ParserRunner',
+                    action: 'close_context'
+                });
             }
         }
 
@@ -218,6 +289,10 @@ class ParserRunner {
                 await this.browser.close();
             } catch (error) {
                 console.error("❌ Ошибка закрытия браузера:", error.message);
+                await errorHandler.handleBrowserError('ParserRunner', error, {
+                    component: 'ParserRunner',
+                    action: 'close_browser'
+                });
             }
         }
 

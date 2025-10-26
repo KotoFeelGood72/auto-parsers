@@ -90,7 +90,7 @@ class DubizzleParser extends BaseParser {
             horsepower: rawData.horsepower || "Неизвестно",
             fuel_type: rawData.fuel_type || "Неизвестно",
             motors_trim: rawData.motors_trim || "Неизвестно",
-            kilometers: parseInt(rawData.kilometers, 10) || 0,
+            kilometers: rawData.kilometers || 0,
             // Правильный маппинг для цен - сначала проверяем прямые поля, затем вложенные
             price_formatted: rawData.price_formatted || rawData.price?.formatted || "0",
             price_raw: rawData.price_raw || rawData.price?.raw || 0,

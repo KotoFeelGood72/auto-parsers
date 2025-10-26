@@ -28,16 +28,31 @@ class DubicarsListingParser {
             "User-Agent": this.config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         });
 
-        // Отключение загрузки изображений если нужно
-        if (!this.config.enableImageLoading) {
-            await page.route('**/*', (route) => {
-                if (route.request().resourceType() === 'image') {
-                    route.abort();
-                } else {
-                    route.continue();
-                }
-            });
-        }
+        // Оптимизация: блокируем все ненужные ресурсы для ускорения
+        await page.route('**/*', (route) => {
+            const resourceType = route.request().resourceType();
+            const url = route.request().url();
+            
+            // Блокируем изображения
+            if (resourceType === 'image' && !this.config.enableImageLoading) {
+                route.abort();
+                return;
+            }
+            
+            // Блокируем ненужные ресурсы
+            if (resourceType === 'stylesheet' || 
+                resourceType === 'font' ||
+                resourceType === 'media' ||
+                resourceType === 'websocket' ||
+                url.includes('analytics') ||
+                url.includes('tracking') ||
+                url.includes('advertisement')) {
+                route.abort();
+                return;
+            }
+            
+            route.continue();
+        });
 
         return page;
     }
@@ -61,15 +76,15 @@ class DubicarsListingParser {
 
                     await page.goto(url, { 
                         waitUntil: "domcontentloaded", 
-                        timeout: this.config.timeout 
+                        timeout: 30000 
                     });
 
                     // Ждём основной список машин
-                    await page.waitForSelector(this.listingSelector, { timeout: 30000 });
+                    await page.waitForSelector(this.listingSelector, { timeout: 10000 });
 
                     // Скроллим страницу для подгрузки всех карточек
                     await this.autoScroll(page);
-                    await page.waitForTimeout(2000);
+                    await page.waitForTimeout(500); // Уменьшаем задержку
 
                     // Ищем объявления с основным селектором
                     let carLinks = [];
@@ -156,7 +171,7 @@ class DubicarsListingParser {
                 let attemptsWithoutChange = 0;
 
                 const interval = setInterval(() => {
-                    scrollElement.scrollBy(0, 300);
+                    scrollElement.scrollBy(0, 500); // Увеличили шаг скролла
 
                     const currentHeight = scrollElement.scrollHeight;
                     if (currentHeight !== lastScrollHeight) {
@@ -166,12 +181,12 @@ class DubicarsListingParser {
                         attemptsWithoutChange++;
                     }
 
-                    // остановка после 3 "пустых" скроллов
-                    if (attemptsWithoutChange >= 3) {
+                    // остановка после 2 "пустых" скроллов (быстрее)
+                    if (attemptsWithoutChange >= 2) {
                         clearInterval(interval);
                         resolve();
                     }
-                }, 400);
+                }, 200); // Уменьшили интервал
             });
         }, this.scrollContainers);
     }

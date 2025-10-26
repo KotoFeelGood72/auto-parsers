@@ -33,7 +33,7 @@ const createCarListingsTable = `
         horsepower TEXT DEFAULT 'Неизвестно',
         fuel_type TEXT DEFAULT 'Неизвестно',
         motors_trim TEXT DEFAULT 'Неизвестно',
-        kilometers INT DEFAULT 0,
+        kilometers TEXT DEFAULT '0',
         price_formatted TEXT DEFAULT '0',
         price_raw NUMERIC DEFAULT 0,
         currency TEXT DEFAULT 'Неизвестно',

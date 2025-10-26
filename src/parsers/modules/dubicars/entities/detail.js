@@ -59,16 +59,31 @@ class DubicarsDetailParser {
             "User-Agent": this.config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         });
 
-        // Отключение загрузки изображений если нужно
-        if (!this.config.enableImageLoading) {
-            await page.route('**/*', (route) => {
-                if (route.request().resourceType() === 'image') {
-                    route.abort();
-                } else {
-                    route.continue();
-                }
-            });
-        }
+        // Оптимизация: блокируем все ненужные ресурсы для ускорения
+        await page.route('**/*', (route) => {
+            const resourceType = route.request().resourceType();
+            const url = route.request().url();
+            
+            // Блокируем изображения
+            if (resourceType === 'image' && !this.config.enableImageLoading) {
+                route.abort();
+                return;
+            }
+            
+            // Блокируем ненужные ресурсы
+            if (resourceType === 'stylesheet' || 
+                resourceType === 'font' ||
+                resourceType === 'media' ||
+                resourceType === 'websocket' ||
+                url.includes('analytics') ||
+                url.includes('tracking') ||
+                url.includes('advertisement')) {
+                route.abort();
+                return;
+            }
+            
+            route.continue();
+        });
 
         return page;
     }
@@ -97,12 +112,12 @@ class DubicarsDetailParser {
 
             await page.goto(url, { 
                 waitUntil: "domcontentloaded", 
-                timeout: this.config.timeout 
+                timeout: 30000 
             });
 
             console.log("⏳ Ждем загрузку страницы...");
-            // Ждем загрузки страницы и любого заголовка (не обязательно видимого)
-            await page.waitForSelector('h1.text-dark', { timeout: 15000, state: 'attached' });
+            // Ждем загрузки страницы с меньшим таймаутом
+            await page.waitForSelector('h1.text-dark', { timeout: 5000, state: 'attached' });
 
             console.log("📄 Парсим данные...");
 
@@ -206,9 +221,13 @@ class DubicarsDetailParser {
                     
                     // Парсим километры
                     if (text.includes('Km')) {
-                        const kmMatch = text.match(/(\d+\s*Km)/);
+                        // Извлекаем километры с запятыми и пробелами, но останавливаемся на "==" или других разделителях
+                        const kmMatch = text.match(/(\d+[,\s]*\d*\s*Km)(?:\s*==.*)?/);
                         if (kmMatch) {
                             highlights.kilometers = kmMatch[1];
+                        } else {
+                            // Если не нашли точное совпадение, берем весь текст
+                            highlights.kilometers = text;
                         }
                     }
                     
@@ -268,9 +287,13 @@ class DubicarsDetailParser {
                     
                     // Парсим километры
                     if (text.includes('Kilometers')) {
-                        const kmMatch = text.match(/(\d+\s*Km)/);
+                        // Извлекаем километры с запятыми и пробелами, но останавливаемся на "==" или других разделителях
+                        const kmMatch = text.match(/(\d+[,\s]*\d*\s*Km)(?:\s*==.*)?/);
                         if (kmMatch) {
                             highlights.kilometers = kmMatch[1];
+                        } else {
+                            // Если не нашли точное совпадение, берем весь текст
+                            highlights.kilometers = text;
                         }
                     }
                     

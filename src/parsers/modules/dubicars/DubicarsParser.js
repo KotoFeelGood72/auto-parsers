@@ -36,6 +36,8 @@ class DubicarsParser extends BaseParser {
 
     /**
      * Запуск полного цикла парсинга
+     * ВНИМАНИЕ: Этот метод вызывается модулем-обёрткой (index.js),
+     * который управляет жизненным циклом браузера и контекста.
      */
     async run() {
         const results = [];
@@ -59,8 +61,9 @@ class DubicarsParser extends BaseParser {
                     console.log(`⚠️ Пропущено объявление (невалидные данные): ${listingUrl}`);
                 }
                 
-                // Пауза между запросами
-                await this.sleep(this.config.delayBetweenRequests);
+                // Пауза между запросами (оптимизировано)
+                const delay = Math.max(100, this.config.delayBetweenRequests || 100); // Минимум 100ms
+                await this.sleep(delay);
             }
             
             console.log(`✅ Парсер ${this.name} завершен. Обработано: ${results.length} объявлений`);

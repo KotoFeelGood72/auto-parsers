@@ -223,7 +223,7 @@ class CarswitchDetailParser {
                 }
                 return null;
             }, this.imageAttributes.mileage) 
-            const kilometers = kmText ? kmText.replace(/\D/g, "") : "0";
+            const kilometers = kmText || "0";
 
             // Извлекаем цену
             const priceText = await this.safeEval(page, this.selectors.price, el => el.textContent) || "";

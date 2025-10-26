@@ -90,16 +90,19 @@ class AutotradersParser extends BaseParser {
             fuel_type: rawData.fuel_type || "Неизвестно",
             motors_trim: rawData.motors_trim || "Неизвестно",
             kilometers: parseInt(rawData.kilometers, 10) || 0,
-            price_formatted: rawData.price?.formatted || "0",
-            price_raw: rawData.price?.raw || 0,
-            currency: rawData.price?.currency || "Неизвестно",
+            // Правильный маппинг для цен - сначала проверяем прямые поля, затем вложенные
+            price_formatted: rawData.price_formatted || rawData.price?.formatted || "0",
+            price_raw: rawData.price_raw || rawData.price?.raw || 0,
+            currency: rawData.currency || rawData.price?.currency || "Неизвестно",
             exterior_color: rawData.exterior_color || "Неизвестно",
             location: rawData.location || "Неизвестно",
-            phone: rawData.contact?.phone || "Не указан",
-            seller_name: rawData.sellers?.sellerName || "Неизвестен",
-            seller_type: rawData.sellers?.sellerType || "Неизвестен",
-            seller_logo: rawData.sellers?.sellerLogo || null,
-            seller_profile_link: rawData.sellers?.sellerProfileLink || null,
+            // Правильный маппинг для контактов - сначала проверяем прямые поля, затем вложенные
+            phone: rawData.phone || rawData.contact?.phone || "Не указан",
+            // Правильный маппинг для продавца - сначала проверяем прямые поля, затем вложенные
+            seller_name: rawData.seller_name || rawData.sellers?.sellerName || "Неизвестен",
+            seller_type: rawData.seller_type || rawData.sellers?.sellerType || "Неизвестен",
+            seller_logo: rawData.seller_logo || rawData.sellers?.sellerLogo || null,
+            seller_profile_link: rawData.seller_profile_link || rawData.sellers?.sellerProfileLink || null,
             main_image: rawData.main_image || null,
             photos: rawData.photos || []
         };
