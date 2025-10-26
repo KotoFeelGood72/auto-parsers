@@ -8,7 +8,6 @@
     "start:prod": "node --expose-gc --max-old-space-size=256 src/index.js cycle",
     "dubicars": "node --expose-gc --max-old-space-size=512 src/index.js single dubicars",
     "dubizzle": "node --expose-gc --max-old-space-size=512 src/index.js single dubizzle",
-    "db": "node src/init_db.js",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f parser",
