@@ -7,11 +7,14 @@ class OpenSooqListingParser {
         this.config = config;
         
         // Основные селекторы для OpenSooq
-        this.listingSelector = '.post-item';
-        this.listingStemSelector = '.post-item a';
+        // Используем новые селекторы на основе структуры сайта
+        this.listingSelector = '#serpMainContent a.postListItemData';
+        this.listingStemSelector = 'a.postListItemData';
+        this.containerSelector = '#serpMainContent';
         
         // Селекторы для скролла
         this.scrollContainers = [
+            '#serpMainContent',
             '.posts-container',
             'main',
             "body"
@@ -52,16 +55,34 @@ class OpenSooqListingParser {
                     
                     try {
                         // Проверяем наличие контейнера с объявлениями
-                        const listingContainer = await page.$(this.listingSelector);
+                        const listingContainer = await page.$(this.containerSelector);
                         if (listingContainer) {
+                            console.log(`✅ Найден контейнер #serpMainContent`);
+                            
+                            // Извлекаем ссылки из элементов списка
                             carLinks = await page.$$eval(
                                 this.listingStemSelector,
-                                (anchors) => anchors.map((a) => a.href).filter(Boolean)
+                                (anchors, baseUrl) => {
+                                    return anchors.map((a) => {
+                                        const href = a.getAttribute('href');
+                                        // Проверяем, полная ли это ссылка или относительная
+                                        if (href && href.startsWith('http')) {
+                                            return href;
+                                        } else if (href) {
+                                            // Конструируем полный URL из относительного пути
+                                            return baseUrl + href;
+                                        }
+                                        return null;
+                                    }).filter(Boolean);
+                                },
+                                this.config.baseUrl
                             );
                             
                             if (carLinks.length > 0) {
                                 console.log(`✅ Найдено ${carLinks.length} объявлений с основным селектором`);
                             }
+                        } else {
+                            console.warn(`⚠️ Контейнер #serpMainContent не найден`);
                         }
                     } catch (error) {
                         console.log("⚠️ Ошибка при поиске объявлений:", error.message);

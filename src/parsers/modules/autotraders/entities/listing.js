@@ -6,14 +6,14 @@ class AutotradersListingParser {
     constructor(config) {
         this.config = config;
         
-        // Основные селекторы для Autotraders
-        this.listingSelector = '.vehicle-card';
-        this.listingStemSelector = '.vehicle-card a';
+        // Основные селекторы для Autotraders.ae
+        this.listingSelector = '.row.cars-cont';
+        this.listingStemSelector = '.row.cars-cont a';
         
         // Селекторы для скролла
         this.scrollContainers = [
-            '.search-results',
             'main',
+            '.container',
             "body"
         ];
     }
@@ -32,7 +32,10 @@ class AutotradersListingParser {
                 console.log("🔍 Открываем каталог Autotraders...");
 
                 while (true) {
-                    const url = `${this.config.listingsUrl}?page=${currentPage}`;
+                    // AutoTraders использует параметры в URL для пагинации
+                    const url = currentPage === 1 
+                        ? this.config.listingsUrl 
+                        : `${this.config.listingsUrl}?page=${currentPage}&limit=20`;
                     console.log(`📄 Загружаем страницу: ${url}`);
 
                     await page.goto(url, { 
@@ -51,17 +54,26 @@ class AutotradersListingParser {
                     let carLinks = [];
                     
                     try {
-                        // Проверяем наличие контейнера с объявлениями
-                        const listingContainer = await page.$(this.listingSelector);
-                        if (listingContainer) {
-                            carLinks = await page.$$eval(
-                                this.listingStemSelector,
-                                (anchors) => anchors.map((a) => a.href).filter(Boolean)
-                            );
+                        // Извлекаем ссылки на объявления - берем первую ссылку из каждого блока cars-cont
+                        carLinks = await page.evaluate(() => {
+                            const listings = Array.from(document.querySelectorAll('.row.cars-cont'));
+                            const links = [];
+                            const uniqueLinks = new Set();
                             
-                            if (carLinks.length > 0) {
-                                console.log(`✅ Найдено ${carLinks.length} объявлений с основным селектором`);
+                            for (const listing of listings) {
+                                // Ищем первую ссылку, которая ведет на детальную страницу автомобиля
+                                const anchor = listing.querySelector('a[href*="/used-cars/"]');
+                                if (anchor && anchor.href && !uniqueLinks.has(anchor.href)) {
+                                    uniqueLinks.add(anchor.href);
+                                    links.push(anchor.href);
+                                }
                             }
+                            
+                            return links;
+                        });
+                        
+                        if (carLinks.length > 0) {
+                            console.log(`✅ Найдено ${carLinks.length} объявлений`);
                         }
                     } catch (error) {
                         console.log("⚠️ Ошибка при поиске объявлений:", error.message);

@@ -7,8 +7,8 @@ class DubizzleListingParser {
         this.config = config;
         
         // Основные селекторы для Dubizzle
-        this.listingSelector = '[data-testid="listing-item"]';
-        this.listingStemSelector = '[data-testid="listing-item"] a';
+        // Сам элемент с data-testid ЯВЛЯЕТСЯ ссылкой <a>
+        this.listingSelector = '#listings-top a[data-testid^="listing-"]';
         
         // Селекторы для скролла
         this.scrollContainers = [
@@ -23,45 +23,61 @@ class DubizzleListingParser {
      */
     async* getListings(context) {
         let attempt = 0;
-        let currentPage = 1;
+        let currentPage = 1; // Начинаем с page=1, page=0 не существует
 
         while (attempt < this.config.maxRetries) {
-            const page = await context.newPage();
+            let page = null;
 
             try {
+                page = await context.newPage();
                 console.log("🔍 Открываем каталог Dubizzle...");
 
                 while (true) {
+                    // URL с параметром page, начиная с 0
                     const url = `${this.config.listingsUrl}?page=${currentPage}`;
                     console.log(`📄 Загружаем страницу: ${url}`);
 
                     await page.goto(url, { 
                         waitUntil: "domcontentloaded", 
-                        timeout: 60000 
+                        timeout: 90000 
                     });
 
-                    // Ждем загрузки страницы
-                    await page.waitForTimeout(3000);
+                    // Ждем загрузки данных
+                    await page.waitForTimeout(5000);
 
-                    // Скроллим страницу для подгрузки всех карточек
-                    await this.autoScroll(page);
-                    await page.waitForTimeout(2000);
-
-                    // Ищем объявления с основным селектором
+                    // Извлекаем ссылки используя правильные селекторы
                     let carLinks = [];
                     
                     try {
-                        // Проверяем наличие контейнера с объявлениями
-                        const listingContainer = await page.$(this.listingSelector);
-                        if (listingContainer) {
-                            carLinks = await page.$$eval(
-                                this.listingStemSelector,
-                                (anchors) => anchors.map((a) => a.href).filter(Boolean)
-                            );
-                            
-                            if (carLinks.length > 0) {
-                                console.log(`✅ Найдено ${carLinks.length} объявлений с основным селектором`);
-                            }
+                        // Ждем появления контейнера с листингами
+                        await page.waitForSelector('#listings-top', { timeout: 30000 });
+                        
+                        // Извлекаем ссылки - элементы с data-testid сами являются ссылками
+                        carLinks = await page.$$eval(
+                            this.listingSelector,
+                            (anchors) => anchors.map((a) => a.href).filter(Boolean)
+                        );
+                        
+                        if (carLinks.length > 0) {
+                            console.log(`✅ Найдено ${carLinks.length} объявлений`);
+                        } else {
+                            // Debug: проверяем что есть на странице
+                            const debug = await page.evaluate(() => {
+                                const container = document.querySelector('#listings-top');
+                                const listings = container ? container.querySelectorAll('[data-testid^="listing-"]') : [];
+                                const count = listings.length;
+                                let linksInFirst = 0;
+                                if (listings.length > 0) {
+                                    const firstListing = listings[0];
+                                    linksInFirst = firstListing.querySelectorAll('a').length;
+                                }
+                                return { 
+                                    hasContainer: !!container, 
+                                    listingsCount: count,
+                                    linksInFirstListing: linksInFirst
+                                };
+                            });
+                            console.log(`⚠️ Debug: ${JSON.stringify(debug)}`);
                         }
                     } catch (error) {
                         console.log("⚠️ Ошибка при поиске объявлений:", error.message);
@@ -73,13 +89,19 @@ class DubizzleListingParser {
                         // Проверяем, есть ли вообще контент на странице
                         const pageContent = await page.evaluate(() => document.body.textContent);
                         if (pageContent.length < 1000) {
-                            console.warn(`⚠️ Страница ${currentPage} выглядит пустой, возможно сайт недоступен`);
+                            console.warn(`⚠️ Страница ${currentPage} выглядит пустой, может быть нет страниц после этого`);
                             break;
                         }
                         
                         // Если страница не пустая, но объявления не найдены, попробуем следующую страницу
                         console.log(`🔄 Переходим к странице ${currentPage + 1}...`);
                         currentPage++;
+                        
+                        // Ограничим количество страниц
+                        if (currentPage >= 50) {
+                            console.log("⚠️ Достигнут лимит страниц (50)");
+                            break;
+                        }
                         continue;
                     }
 
@@ -93,15 +115,35 @@ class DubizzleListingParser {
                         });
                     }
 
+                    // Сначала возвращаем все ссылки
                     for (const link of carLinks) {
                         yield link;
                     }
+                    
                     currentPage++;
+                    
+                    // Ограничим количество страниц
+                    if (currentPage >= 50) {
+                        console.log("⚠️ Достигнут лимит страниц (50)");
+                        break;
+                    }
                 }
 
+                // Закрываем страницу после завершения парсинга
+                if (page) {
+                    await page.close();
+                    page = null;
+                }
                 break; // Успешно завершили парсинг
             } catch (error) {
                 console.error(`❌ Ошибка при парсинге страницы ${currentPage}:`, error);
+                
+                // Закрываем страницу при ошибке
+                if (page) {
+                    await page.close();
+                    page = null;
+                }
+                
                 attempt++;
                 
                 if (attempt >= this.config.maxRetries) {
@@ -109,9 +151,7 @@ class DubizzleListingParser {
                 }
                 
                 console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries}...`);
-                await this.sleep(this.config.retryDelay);
-            } finally {
-                await page.close();
+                await this.sleep(this.config.retryDelay || 5000);
             }
         }
     }
