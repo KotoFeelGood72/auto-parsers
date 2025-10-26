@@ -57,8 +57,6 @@ class ParserRunner {
         // Инициализируем базу данных
         try {
             await databaseManager.initialize();
-            // Инициализируем источники
-            await databaseManager.initializeSources();
         } catch (error) {
             console.error("❌ База данных недоступна, используем файлы");
             await errorHandler.handleSystemError('database', error, {
@@ -180,7 +178,7 @@ class ParserRunner {
 
                 try {
                     const rawData = await parser.parseListing(link);
-                    if (rawData && parser.validateData(rawData)) {
+                    if (rawData) {
                         const normalizedData = parser.normalizeData(rawData);
                         await saveData(normalizedData);
                         processedCount++;

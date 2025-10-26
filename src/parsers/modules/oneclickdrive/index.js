@@ -25,6 +25,13 @@ class OneclickdriveModule {
     }
 
     /**
+     * Нормализация данных
+     */
+    normalizeData(rawData) {
+        return this.parser.normalizeData(rawData);
+    }
+
+    /**
      * Запуск парсера
      */
     async run() {

@@ -43,33 +43,10 @@ class CarswitchModule {
     }
 
     /**
-     * Инициализация модуля
-     */
-    async initialize(context, databaseManager) {
-        this.context = context;
-        this.databaseManager = databaseManager;
-        return await this.parser.initialize(context, databaseManager);
-    }
-
-    /**
-     * Валидация данных
-     */
-    validateData(data) {
-        return this.parser.validateData ? this.parser.validateData(data) : true;
-    }
-
-    /**
      * Нормализация данных
      */
-    normalizeData(data) {
-        return this.parser.normalizeData ? this.parser.normalizeData(data) : data;
-    }
-
-    /**
-     * Очистка ресурсов
-     */
-    async cleanup() {
-        return await this.parser.cleanup ? this.parser.cleanup() : Promise.resolve();
+    normalizeData(rawData) {
+        return this.parser.normalizeData(rawData);
     }
 
     /**
@@ -123,8 +100,8 @@ class CarswitchModule {
             this.browser = await startBrowser();
             this.context = await this.browser.newContext();
             
-            // Инициализируем парсер с контекстом и databaseManager
-            await this.parser.initialize(this.context, this.databaseManager);
+            // Инициализируем парсер с контекстом
+            await this.parser.initialize(this.context);
             
             console.log(`✅ Модуль ${this.name} инициализирован`);
             return true;

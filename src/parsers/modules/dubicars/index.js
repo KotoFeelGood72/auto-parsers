@@ -46,6 +46,13 @@ class DubicarsModule {
     }
 
     /**
+     * Нормализация данных
+     */
+    normalizeData(rawData) {
+        return this.parser.normalizeData(rawData);
+    }
+
+    /**
      * Инициализация модуля
      */
     async initialize() {
