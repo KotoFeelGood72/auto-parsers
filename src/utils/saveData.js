@@ -1,5 +1,24 @@
 const pool = require("../db");
 
+/**
+ * Извлекает число из строки километров
+ * Примеры: "60,500 Kms" -> "60,500", "10 km" -> "10", "Неизвестно" -> "0"
+ */
+function extractKilometers(kmString) {
+    if (!kmString || typeof kmString !== 'string') {
+        return '0';
+    }
+    
+    // Убираем все кроме цифр и запятых
+    const cleaned = kmString.replace(/[^\d,]/g, '');
+    
+    if (!cleaned) {
+        return '0';
+    }
+    
+    return cleaned;
+}
+
 async function saveData(carDetails) {
     console.log("🔍 Получены данные для сохранения:");
     console.log(JSON.stringify(carDetails, null, 2));
@@ -63,7 +82,7 @@ async function saveData(carDetails) {
             carDetails.horsepower || "Неизвестно",
             carDetails.fuel_type || "Неизвестно",
             carDetails.motors_trim || "Неизвестно",
-            carDetails.kilometers || '0',
+            extractKilometers(carDetails.kilometers), // Извлекаем число и сохраняем как строку
             carDetails.price_formatted || carDetails.price?.formatted || "0",
             carDetails.price_raw || carDetails.price?.raw || 0,
             carDetails.currency || carDetails.price?.currency || "Неизвестно",

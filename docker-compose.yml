@@ -23,6 +23,7 @@ services:
       - db
     environment:
       - NODE_ENV=production
+      - DOCKER=true
       - DATABASE_URL=postgresql://root:P@rs3r_S3cR3t!@db:5432/auto_db
       - DB_HOST=db
       - DB_PORT=5432
