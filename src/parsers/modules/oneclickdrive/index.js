@@ -71,6 +71,27 @@ class OneclickdriveModule {
     }
 
     /**
+     * Очистка ресурсов модуля
+     */
+    async cleanup() {
+        try {
+            if (this.parser && this.parser.cleanup) {
+                await this.parser.cleanup();
+            }
+            
+            // Закрываем браузер
+            if (this.context) {
+                await this.context.close();
+            }
+            if (this.browser) {
+                await this.browser.close();
+            }
+        } catch (error) {
+            console.error(`❌ Ошибка очистки модуля ${this.name}:`, error.message);
+        }
+    }
+
+    /**
      * Инициализация модуля
      */
     async initialize() {
