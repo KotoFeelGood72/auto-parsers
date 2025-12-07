@@ -113,3 +113,7 @@ deploy_info.txt
 # Temporary files
 tmp/
 temp/
+
+# Package files (if you want to ignore package.json changes)
+package.json
+package-lock.json
