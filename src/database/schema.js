@@ -47,6 +47,23 @@ const createCarPhotosTable = `
 `;
 
 /**
+ * SQL для создания таблицы users
+ */
+const createUsersTable = `
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'user',
+        first_name TEXT,
+        last_name TEXT,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    );
+`;
+
+/**
  * SQL для создания индексов
  */
 const createIndexes = [
@@ -56,7 +73,9 @@ const createIndexes = [
     `CREATE INDEX IF NOT EXISTS idx_car_listings_year ON car_listings(year);`,
     `CREATE INDEX IF NOT EXISTS idx_car_listings_price_raw ON car_listings(price_raw);`,
     `CREATE INDEX IF NOT EXISTS idx_car_listings_created_at ON car_listings(created_at);`,
-    `CREATE INDEX IF NOT EXISTS idx_car_photos_listing_id ON car_photos(listing_id);`
+    `CREATE INDEX IF NOT EXISTS idx_car_photos_listing_id ON car_photos(listing_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
+    `CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`
 ];
 
 /**
@@ -84,7 +103,8 @@ const createTriggers = [
 const fullSchema = {
     tables: {
         car_listings: createCarListingsTable,
-        car_photos: createCarPhotosTable
+        car_photos: createCarPhotosTable,
+        users: createUsersTable
     },
     indexes: createIndexes,
     triggers: createTriggers
@@ -97,7 +117,8 @@ const fullSchema = {
 function getCreateTablesSQL() {
     return [
         createCarListingsTable,
-        createCarPhotosTable
+        createCarPhotosTable,
+        createUsersTable
     ];
 }
 
@@ -132,7 +153,8 @@ function getFullSchema() {
 function getDropTablesSQL() {
     return [
         'DROP TABLE IF EXISTS car_photos CASCADE;',
-        'DROP TABLE IF EXISTS car_listings CASCADE;'
+        'DROP TABLE IF EXISTS car_listings CASCADE;',
+        'DROP TABLE IF EXISTS users CASCADE;'
     ];
 }
 
@@ -145,13 +167,14 @@ function getCheckTablesSQL() {
         `SELECT table_name 
          FROM information_schema.tables 
          WHERE table_schema = 'public' 
-         AND table_name IN ('car_listings', 'car_photos');`
+         AND table_name IN ('car_listings', 'car_photos', 'users');`
     ];
 }
 
 module.exports = {
     createCarListingsTable,
     createCarPhotosTable,
+    createUsersTable,
     createIndexes,
     createTriggers,
     fullSchema,

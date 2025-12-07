@@ -169,6 +169,13 @@ class ParserRunner {
             return;
         }
 
+        // Отправляем уведомление о старте парсера
+        if (telegramService.getStatus().enabled) {
+            await telegramService.sendParserStartNotification(parserName, {
+                mode: 'parsing'
+            });
+        }
+
         let processedCount = 0;
 
         try {
@@ -219,7 +226,11 @@ class ParserRunner {
         } finally {
             // Очищаем ресурсы парсера
             try {
-                await parser.cleanup();
+                // Сохраняем ссылку на метод cleanup для предотвращения проблем при перезагрузке модулей
+                const cleanupMethod = parser && typeof parser.cleanup === 'function' ? parser.cleanup : null;
+                if (cleanupMethod) {
+                    await cleanupMethod.call(parser);
+                }
             } catch (cleanupError) {
                 console.error("❌ Ошибка очистки:", cleanupError.message);
                 await errorHandler.handleSystemError('parser_cleanup', cleanupError, {
@@ -259,7 +270,13 @@ class ParserRunner {
         // Очищаем ресурсы текущего парсера
         if (this.currentParser) {
             try {
-                await this.currentParser.cleanup();
+                // Сохраняем ссылку на метод cleanup для предотвращения проблем при перезагрузке модулей
+                const cleanupMethod = typeof this.currentParser.cleanup === 'function' 
+                    ? this.currentParser.cleanup 
+                    : null;
+                if (cleanupMethod) {
+                    await cleanupMethod.call(this.currentParser);
+                }
             } catch (error) {
                 console.error("❌ Ошибка очистки парсера:", error.message);
                 await errorHandler.handleSystemError('parser_cleanup', error, {

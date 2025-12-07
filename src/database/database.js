@@ -117,13 +117,15 @@ class DatabaseManager {
             return {
                 car_listings: existingTables.includes('car_listings'),
                 car_photos: existingTables.includes('car_photos'),
-                allTablesExist: existingTables.length === 2
+                users: existingTables.includes('users'),
+                allTablesExist: existingTables.length === 3
             };
         } catch (error) {
             console.error("❌ Ошибка при проверке таблиц:", error);
             return {
                 car_listings: false,
                 car_photos: false,
+                users: false,
                 allTablesExist: false
             };
         } finally {

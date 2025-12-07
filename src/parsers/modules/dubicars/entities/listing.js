@@ -63,6 +63,8 @@ class DubicarsListingParser {
     async* getListings(context) {
         let attempt = 0;
         let currentPage = 1;
+        const maxPages = 1000; // Защита от бесконечного цикла
+        const timeout = this.config.timeout || 60000; // Используем timeout из конфигурации
 
         while (attempt < this.config.maxRetries) {
             const page = await this.createPage(context);
@@ -70,17 +72,39 @@ class DubicarsListingParser {
             try {
                 console.log("🔍 Открываем каталог Dubicars...");
 
-                while (true) {
+                while (currentPage <= maxPages) {
                     const url = this.config.listingsUrl.replace('{page}', currentPage);
-                    console.log(`📄 Загружаем страницу: ${url}`);
+                    console.log(`📄 Загружаем страницу ${currentPage}: ${url}`);
 
-                    await page.goto(url, { 
-                        waitUntil: "domcontentloaded", 
-                        timeout: 30000 
-                    });
+                    try {
+                        await page.goto(url, { 
+                            waitUntil: "domcontentloaded", 
+                            timeout: timeout 
+                        });
+                    } catch (navigationError) {
+                        // Обработка ошибок загрузки страницы
+                        if (navigationError.name === 'TimeoutError') {
+                            console.warn(`⏱️ Таймаут загрузки страницы ${currentPage} (${timeout}ms), пропускаем и переходим к следующей...`);
+                            currentPage++;
+                            continue;
+                        }
+                        // Для других ошибок навигации также пропускаем страницу
+                        console.warn(`⚠️ Ошибка загрузки страницы ${currentPage}: ${navigationError.message}, пропускаем...`);
+                        currentPage++;
+                        continue;
+                    }
 
-                    // Ждём основной список машин
-                    await page.waitForSelector(this.listingSelector, { timeout: 10000 });
+                    // Ждём основной список машин с обработкой таймаута
+                    try {
+                        await page.waitForSelector(this.listingSelector, { timeout: 15000 });
+                    } catch (selectorError) {
+                        if (selectorError.name === 'TimeoutError') {
+                            console.warn(`⏱️ Селектор не найден на странице ${currentPage}, пропускаем...`);
+                            currentPage++;
+                            continue;
+                        }
+                        throw selectorError;
+                    }
 
                     // Скроллим страницу для подгрузки всех карточек
                     await this.autoScroll(page);
@@ -110,10 +134,14 @@ class DubicarsListingParser {
                         console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
                         
                         // Проверяем, есть ли вообще контент на странице
-                        const pageContent = await page.evaluate(() => document.body.textContent);
-                        if (pageContent.length < 1000) {
-                            console.warn(`⚠️ Страница ${currentPage} выглядит пустой, возможно сайт недоступен`);
-                            break;
+                        try {
+                            const pageContent = await page.evaluate(() => document.body.textContent);
+                            if (pageContent && pageContent.length < 1000) {
+                                console.warn(`⚠️ Страница ${currentPage} выглядит пустой, возможно сайт недоступен`);
+                                break;
+                            }
+                        } catch (evalError) {
+                            console.warn(`⚠️ Не удалось проверить контент страницы ${currentPage}, пропускаем...`);
                         }
                         
                         // Если страница не пустая, но объявления не найдены, попробуем следующую страницу
@@ -140,17 +168,22 @@ class DubicarsListingParser {
 
                 break; // Успешно завершили парсинг
             } catch (error) {
-                console.error(`❌ Ошибка при парсинге страницы ${currentPage}:`, error);
+                console.error(`❌ Критическая ошибка при парсинге страницы ${currentPage}:`, error);
                 attempt++;
                 
                 if (attempt >= this.config.maxRetries) {
+                    console.error(`❌ Достигнут лимит повторных попыток (${this.config.maxRetries}), прекращаем парсинг`);
                     throw error;
                 }
                 
                 console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries}...`);
-                await this.sleep(this.config.retryDelay);
+                await this.sleep(this.config.retryDelay || 5000);
             } finally {
-                await page.close();
+                try {
+                    await page.close();
+                } catch (closeError) {
+                    console.warn(`⚠️ Ошибка при закрытии страницы: ${closeError.message}`);
+                }
             }
         }
     }

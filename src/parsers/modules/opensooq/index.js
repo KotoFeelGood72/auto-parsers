@@ -112,6 +112,35 @@ class OpenSooqModule {
     }
 
     /**
+     * Очистка ресурсов модуля
+     */
+    async cleanup() {
+        try {
+            if (this.parser && typeof this.parser.cleanup === 'function') {
+                await this.parser.cleanup();
+            }
+        } catch (err) {
+            console.error(`❌ Ошибка очистки парсера в модуле ${this.name}:`, err.message);
+        }
+
+        try {
+            if (this.context) {
+                await this.context.close();
+            }
+        } catch (err) {
+            console.error(`❌ Ошибка закрытия контекста в модуле ${this.name}:`, err.message);
+        }
+
+        try {
+            if (this.browser) {
+                await this.browser.close();
+            }
+        } catch (err) {
+            console.error(`❌ Ошибка закрытия браузера в модуле ${this.name}:`, err.message);
+        }
+    }
+
+    /**
      * Получение информации о модуле
      */
     getInfo() {
