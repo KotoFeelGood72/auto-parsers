@@ -1,3 +1,5 @@
+const { telegramService } = require('../../../../services/TelegramService');
+
 /**
  * Парсинг списка объявлений для Autotraders.com
  */
@@ -16,6 +18,20 @@ class AutotradersListingParser {
             '.container',
             "body"
         ];
+
+        // Статистика для логирования
+        this.stats = {
+            totalPages: 0,
+            totalListings: 0,
+            errors: 0,
+            startTime: null
+        };
+
+        // Максимальное количество страниц (защита от бесконечного цикла)
+        this.maxPages = config.maxPages || 1000;
+        
+        // Интервал для отправки уведомлений в Telegram (каждые N страниц)
+        this.telegramNotificationInterval = config.telegramNotificationInterval || 10;
     }
 
     /**
@@ -24,99 +40,368 @@ class AutotradersListingParser {
     async* getListings(context) {
         let attempt = 0;
         let currentPage = 1;
+        this.stats.startTime = Date.now();
+        this.stats.totalPages = 0;
+        this.stats.totalListings = 0;
+        this.stats.errors = 0;
 
-        while (attempt < this.config.maxRetries) {
+        // Отправляем уведомление о старте парсинга списка
+        if (telegramService.getStatus().enabled) {
+            await this.sendProgressNotification('start', currentPage, 0);
+        }
+
+        while (attempt < (this.config.maxRetries || 3)) {
             const page = await context.newPage();
 
             try {
                 console.log("🔍 Открываем каталог Autotraders...");
 
-                while (true) {
+                while (currentPage <= this.maxPages) {
                     // AutoTraders использует параметры в URL для пагинации
                     const url = currentPage === 1 
                         ? this.config.listingsUrl 
                         : `${this.config.listingsUrl}?page=${currentPage}&limit=20`;
-                    console.log(`📄 Загружаем страницу: ${url}`);
+                    console.log(`📄 Загружаем страницу ${currentPage}: ${url}`);
 
-                    await page.goto(url, { 
-                        waitUntil: "domcontentloaded", 
-                        timeout: 60000 
-                    });
-
-                    // Ждем загрузки страницы
-                    await page.waitForTimeout(3000);
-
-                    // Скроллим страницу для подгрузки всех карточек
-                    await this.autoScroll(page);
-                    await page.waitForTimeout(2000);
-
-                    // Ищем объявления с основным селектором
-                    let carLinks = [];
-                    
                     try {
-                        // Извлекаем ссылки на объявления - берем первую ссылку из каждого блока cars-cont
-                        carLinks = await page.evaluate(() => {
-                            const listings = Array.from(document.querySelectorAll('.row.cars-cont'));
-                            const links = [];
-                            const uniqueLinks = new Set();
-                            
-                            for (const listing of listings) {
-                                // Ищем первую ссылку, которая ведет на детальную страницу автомобиля
-                                const anchor = listing.querySelector('a[href*="/used-cars/"]');
-                                if (anchor && anchor.href && !uniqueLinks.has(anchor.href)) {
-                                    uniqueLinks.add(anchor.href);
-                                    links.push(anchor.href);
-                                }
-                            }
-                            
-                            return links;
+                        // Безопасная загрузка страницы
+                        await page.goto(url, { 
+                            waitUntil: "domcontentloaded", 
+                            timeout: 60000 
+                        }).catch(err => {
+                            throw new Error(`Ошибка загрузки страницы: ${err.message}`);
                         });
-                        
-                        if (carLinks.length > 0) {
-                            console.log(`✅ Найдено ${carLinks.length} объявлений`);
+
+                        // Проверяем, что страница загрузилась корректно
+                        const pageTitle = await page.title().catch(() => null);
+                        if (!pageTitle) {
+                            throw new Error('Страница не загрузилась (нет title)');
                         }
-                    } catch (error) {
-                        console.log("⚠️ Ошибка при поиске объявлений:", error.message);
-                    }
 
-                    if (carLinks.length === 0) {
-                        console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
+                        // Ждем загрузки страницы
+                        await page.waitForTimeout(3000);
+
+                        // Скроллим страницу для подгрузки всех карточек
+                        try {
+                            await this.autoScroll(page);
+                            await page.waitForTimeout(2000);
+                        } catch (scrollError) {
+                            console.warn(`⚠️ Ошибка при скролле страницы ${currentPage}:`, scrollError.message);
+                        }
+
+                        // Ищем объявления с основным селектором
+                        let carLinks = [];
                         
-                        // Если объявления не найдены, завершаем парсинг и переходим к следующему модулю
-                        console.log(`✅ Завершаем парсинг Autotraders, переход к следующему модулю`);
-                        return;
-                    }
+                        try {
+                            // Извлекаем ссылки на объявления - берем первую ссылку из каждого блока cars-cont
+                            carLinks = await page.evaluate(() => {
+                                try {
+                                    const listings = Array.from(document.querySelectorAll('.row.cars-cont'));
+                                    const links = [];
+                                    const uniqueLinks = new Set();
+                                    
+                                    for (const listing of listings) {
+                                        if (!listing) continue;
+                                        
+                                        // Ищем первую ссылку, которая ведет на детальную страницу автомобиля
+                                        const anchor = listing.querySelector('a[href*="/used-cars/"]');
+                                        if (anchor && anchor.href && !uniqueLinks.has(anchor.href)) {
+                                            uniqueLinks.add(anchor.href);
+                                            links.push(anchor.href);
+                                        }
+                                    }
+                                    
+                                    return links;
+                                } catch (e) {
+                                    console.error('Ошибка в evaluate:', e);
+                                    return [];
+                                }
+                            });
+                            
+                            if (carLinks.length > 0) {
+                                console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
+                            }
+                        } catch (error) {
+                            console.error(`⚠️ Ошибка при поиске объявлений на странице ${currentPage}:`, error.message);
+                            this.stats.errors++;
+                            
+                            // Отправляем уведомление об ошибке в Telegram
+                            if (telegramService.getStatus().enabled) {
+                                await this.sendErrorNotification(currentPage, error, url);
+                            }
+                        }
 
-                    console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
-                    
-                    // Логируем первые несколько ссылок для отладки
-                    if (carLinks.length > 0) {
-                        console.log(`🔗 Первые 3 ссылки на странице ${currentPage}:`);
-                        carLinks.slice(0, 3).forEach((link, index) => {
-                            console.log(`   ${index + 1}. ${link}`);
-                        });
-                    }
+                        // Обновляем статистику
+                        this.stats.totalPages = currentPage;
+                        this.stats.totalListings += carLinks.length;
 
-                    for (const link of carLinks) {
-                        yield link;
+                        // Логируем первые несколько ссылок для отладки
+                        if (carLinks.length > 0 && currentPage <= 3) {
+                            console.log(`🔗 Первые 3 ссылки на странице ${currentPage}:`);
+                            carLinks.slice(0, 3).forEach((link, index) => {
+                                console.log(`   ${index + 1}. ${link}`);
+                            });
+                        }
+
+                        // Отправляем уведомление в Telegram каждые N страниц
+                        if (telegramService.getStatus().enabled && currentPage % this.telegramNotificationInterval === 0) {
+                            await this.sendProgressNotification('progress', currentPage, this.stats.totalListings);
+                        }
+
+                        // Возвращаем ссылки
+                        for (const link of carLinks) {
+                            if (link) {
+                                yield link;
+                            }
+                        }
+
+                        // Проверяем наличие следующей страницы более надежным способом
+                        // Пробуем загрузить следующую страницу и проверить, есть ли на ней объявления
+                        const hasNextPage = await this.checkNextPageReliable(context, page, currentPage, carLinks.length);
+
+                        if (!hasNextPage) {
+                            console.log(`✅ Завершаем парсинг Autotraders: достигнута последняя страница (${currentPage})`);
+                            
+                            if (telegramService.getStatus().enabled) {
+                                await this.sendProgressNotification('end', currentPage, this.stats.totalListings);
+                            }
+                            return;
+                        }
+
+                        // Если на текущей странице нет объявлений, но есть следующая - продолжаем
+                        if (carLinks.length === 0) {
+                            console.warn(`⚠️ На странице ${currentPage} не найдено объявлений, но есть следующая страница. Продолжаем...`);
+                        }
+
+                        currentPage++;
+                        
+                        // Небольшая задержка между страницами
+                        await this.sleep(this.config.delayBetweenRequests || 1000);
+
+                    } catch (pageError) {
+                        console.error(`❌ Ошибка при обработке страницы ${currentPage}:`, pageError.message);
+                        this.stats.errors++;
+                        
+                        // Отправляем уведомление об ошибке в Telegram
+                        if (telegramService.getStatus().enabled) {
+                            await this.sendErrorNotification(currentPage, pageError, url);
+                        }
+
+                        // Если ошибка критическая, пробуем следующую страницу
+                        if (currentPage < this.maxPages) {
+                            currentPage++;
+                            continue;
+                        } else {
+                            throw pageError;
+                        }
                     }
-                    currentPage++;
                 }
 
+                // Достигнут лимит страниц
+                console.warn(`⚠️ Достигнут максимальный лимит страниц (${this.maxPages})`);
+                
+                if (telegramService.getStatus().enabled) {
+                    await this.sendProgressNotification('limit_reached', currentPage, this.stats.totalListings);
+                }
+                
                 break; // Успешно завершили парсинг
+
             } catch (error) {
-                console.error(`❌ Ошибка при парсинге страницы ${currentPage}:`, error);
+                console.error(`❌ Критическая ошибка при парсинге страницы ${currentPage}:`, error);
+                this.stats.errors++;
                 attempt++;
                 
-                if (attempt >= this.config.maxRetries) {
+                // Отправляем уведомление о критической ошибке
+                if (telegramService.getStatus().enabled) {
+                    await this.sendErrorNotification(currentPage, error, 'unknown', true);
+                }
+                
+                if (attempt >= (this.config.maxRetries || 3)) {
                     throw error;
                 }
                 
-                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries}...`);
-                await this.sleep(this.config.retryDelay);
+                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries || 3}...`);
+                await this.sleep(this.config.retryDelay || 1000);
             } finally {
-                await page.close();
+                try {
+                    await page.close();
+                } catch (closeError) {
+                    console.warn(`⚠️ Ошибка при закрытии страницы:`, closeError.message);
+                }
             }
+        }
+    }
+
+    /**
+     * Надежная проверка наличия следующей страницы
+     * Пробует загрузить следующую страницу и проверить наличие объявлений
+     */
+    async checkNextPageReliable(context, page, currentPage, currentListingsCount) {
+        try {
+            // Сначала проверяем пагинацию на текущей странице
+            const hasPaginationNext = await page.evaluate((pageNum) => {
+                try {
+                    // Ищем различные варианты пагинации
+                    const paginationSelectors = [
+                        '.pagination',
+                        '.pager',
+                        '.page-navigation',
+                        '.pagination-wrapper',
+                        '[class*="pagination"]',
+                        '[class*="pager"]'
+                    ];
+                    
+                    for (const selector of paginationSelectors) {
+                        const pagination = document.querySelector(selector);
+                        if (pagination) {
+                            // Ищем кнопку "Next" или стрелку вправо
+                            const nextSelectors = [
+                                'a[aria-label*="Next"]',
+                                'a[aria-label*="next"]',
+                                'a[aria-label*="Next page"]',
+                                '.next',
+                                '.page-next',
+                                'a.next',
+                                'button.next',
+                                '[class*="next"]',
+                                'a[href*="page"]:contains(">")',
+                                'a:contains("Next")',
+                                'a:contains("→")',
+                                'a:contains("›")'
+                            ];
+                            
+                            for (const nextSelector of nextSelectors) {
+                                try {
+                                    const nextButton = pagination.querySelector(nextSelector);
+                                    if (nextButton) {
+                                        // Проверяем, не disabled ли кнопка
+                                        const isDisabled = nextButton.classList.contains('disabled') ||
+                                                         nextButton.classList.contains('inactive') ||
+                                                         nextButton.hasAttribute('disabled') ||
+                                                         nextButton.getAttribute('aria-disabled') === 'true';
+                                        
+                                        if (!isDisabled) {
+                                            return true;
+                                        }
+                                    }
+                                } catch (e) {
+                                    // Продолжаем поиск
+                                }
+                            }
+                            
+                            // Проверяем номера страниц
+                            const pageLinks = pagination.querySelectorAll('a, button, span');
+                            for (const link of pageLinks) {
+                                if (!link) continue;
+                                const text = link.textContent ? link.textContent.trim() : '';
+                                const linkPageNum = parseInt(text);
+                                if (!isNaN(linkPageNum) && linkPageNum > currentPageNum) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    
+                    return false;
+                } catch (e) {
+                    console.error('Ошибка при проверке пагинации:', e);
+                    return false;
+                }
+            }, currentPage);
+
+            // Если на текущей странице есть объявления, пробуем загрузить следующую страницу
+            if (currentListingsCount > 0) {
+                const nextPageUrl = currentPage === 1 
+                    ? `${this.config.listingsUrl}?page=2&limit=20`
+                    : `${this.config.listingsUrl}?page=${currentPage + 1}&limit=20`;
+                
+                console.log(`🔍 Проверяем наличие следующей страницы: ${nextPageUrl}`);
+                
+                try {
+                    // Создаем новую страницу для проверки
+                    const testPage = await context.newPage();
+                    
+                    try {
+                        await testPage.goto(nextPageUrl, {
+                            waitUntil: "domcontentloaded",
+                            timeout: 30000
+                        });
+                        
+                        await testPage.waitForTimeout(2000);
+                        
+                        // Проверяем наличие объявлений на следующей странице
+                        const hasListings = await testPage.evaluate(() => {
+                            try {
+                                const listings = document.querySelectorAll('.row.cars-cont');
+                                return listings.length > 0;
+                            } catch (e) {
+                                return false;
+                            }
+                        });
+                        
+                        await testPage.close();
+                        
+                        if (hasListings) {
+                            console.log(`✅ Следующая страница ${currentPage + 1} существует и содержит объявления`);
+                            return true;
+                        } else {
+                            console.log(`⚠️ Следующая страница ${currentPage + 1} существует, но не содержит объявлений`);
+                            return false;
+                        }
+                    } catch (testError) {
+                        await testPage.close().catch(() => {});
+                        
+                        // Если ошибка 404 или страница не найдена - значит следующей страницы нет
+                        if (testError.message.includes('404') || 
+                            testError.message.includes('not found') ||
+                            testError.message.includes('net::ERR')) {
+                            console.log(`✅ Следующая страница ${currentPage + 1} не существует (404)`);
+                            return false;
+                        }
+                        
+                        // Для других ошибок предполагаем, что страница может существовать
+                        console.warn(`⚠️ Ошибка при проверке следующей страницы: ${testError.message}`);
+                        return hasPaginationNext; // Используем результат проверки пагинации
+                    }
+                } catch (browserError) {
+                    console.warn(`⚠️ Ошибка создания тестовой страницы: ${browserError.message}`);
+                    return hasPaginationNext; // Используем результат проверки пагинации
+                }
+            } else {
+                // Если на текущей странице нет объявлений, используем только проверку пагинации
+                return hasPaginationNext;
+            }
+        } catch (error) {
+            console.warn(`⚠️ Ошибка при надежной проверке следующей страницы:`, error.message);
+            // В случае ошибки предполагаем, что следующая страница может быть (если есть объявления на текущей)
+            return currentListingsCount > 0;
+        }
+    }
+
+    /**
+     * Старая проверка наличия следующей страницы (для обратной совместимости)
+     */
+    async checkNextPage(page, currentPage) {
+        // Для обратной совместимости используем упрощенную проверку
+        try {
+            const hasNext = await page.evaluate((currentPageNum) => {
+                try {
+                    const pagination = document.querySelector('.pagination, .pager, .page-navigation');
+                    if (pagination) {
+                        const nextButton = pagination.querySelector('a[aria-label*="Next"], a[aria-label*="next"], .next, .page-next');
+                        if (nextButton && !nextButton.classList.contains('disabled')) {
+                            return true;
+                        }
+                    }
+                    const listings = document.querySelectorAll('.row.cars-cont');
+                    return listings.length > 0;
+                } catch (e) {
+                    return false;
+                }
+            }, currentPage);
+            return hasNext;
+        } catch (error) {
+            return true;
         }
     }
 
@@ -124,36 +409,125 @@ class AutotradersListingParser {
      * Автоматический скролл для подгрузки контента
      */
     async autoScroll(page) {
-        await page.evaluate(async (scrollContainers) => {
-            const container = scrollContainers.find(c => document.querySelector(c) !== null);
-            if (!container) return;
+        try {
+            await page.evaluate(async (scrollContainers) => {
+                try {
+                    const container = scrollContainers.find(c => {
+                        const el = document.querySelector(c);
+                        return el !== null;
+                    });
+                    if (!container) return;
 
-            const scrollElement = document.querySelector(container);
-            if (!scrollElement) return;
+                    const scrollElement = document.querySelector(container);
+                    if (!scrollElement) return;
 
-            await new Promise((resolve) => {
-                let lastScrollHeight = 0;
-                let attemptsWithoutChange = 0;
+                    await new Promise((resolve) => {
+                        let lastScrollHeight = 0;
+                        let attemptsWithoutChange = 0;
+                        let maxAttempts = 50; // Максимальное количество попыток
 
-                const interval = setInterval(() => {
-                    scrollElement.scrollBy(0, 300);
+                        const interval = setInterval(() => {
+                            try {
+                                scrollElement.scrollBy(0, 300);
 
-                    const currentHeight = scrollElement.scrollHeight;
-                    if (currentHeight !== lastScrollHeight) {
-                        attemptsWithoutChange = 0;
-                        lastScrollHeight = currentHeight;
-                    } else {
-                        attemptsWithoutChange++;
-                    }
+                                const currentHeight = scrollElement.scrollHeight;
+                                if (currentHeight !== lastScrollHeight) {
+                                    attemptsWithoutChange = 0;
+                                    lastScrollHeight = currentHeight;
+                                } else {
+                                    attemptsWithoutChange++;
+                                }
 
-                    // остановка после 3 "пустых" скроллов
-                    if (attemptsWithoutChange >= 3) {
-                        clearInterval(interval);
-                        resolve();
-                    }
-                }, 400);
-            });
-        }, this.scrollContainers);
+                                // Остановка после 3 "пустых" скроллов или достижения максимума
+                                if (attemptsWithoutChange >= 3 || maxAttempts <= 0) {
+                                    clearInterval(interval);
+                                    resolve();
+                                }
+                                maxAttempts--;
+                            } catch (e) {
+                                clearInterval(interval);
+                                resolve();
+                            }
+                        }, 400);
+                    });
+                } catch (e) {
+                    console.error('Ошибка в autoScroll:', e);
+                }
+            }, this.scrollContainers);
+        } catch (error) {
+            console.warn(`⚠️ Ошибка при скролле:`, error.message);
+        }
+    }
+
+    /**
+     * Отправка уведомления о прогрессе в Telegram
+     */
+    async sendProgressNotification(type, page, listingsCount) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const duration = this.stats.startTime 
+                ? Math.round((Date.now() - this.stats.startTime) / 1000 / 60) 
+                : 0;
+
+            let message = '';
+            
+            if (type === 'start') {
+                message = `🚀 *Autotraders: Начало парсинга*\n\n` +
+                         `Страница: ${page}\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            } else if (type === 'progress') {
+                message = `📊 *Autotraders: Прогресс парсинга*\n\n` +
+                         `Страниц обработано: ${page}\n` +
+                         `Объявлений найдено: ${listingsCount}\n` +
+                         `Ошибок: ${this.stats.errors}\n` +
+                         `Время работы: ${duration} мин\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            } else if (type === 'end') {
+                message = `✅ *Autotraders: Парсинг завершен*\n\n` +
+                         `Всего страниц: ${page}\n` +
+                         `Всего объявлений: ${listingsCount}\n` +
+                         `Ошибок: ${this.stats.errors}\n` +
+                         `Время работы: ${duration} мин\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            } else if (type === 'limit_reached') {
+                message = `⚠️ *Autotraders: Достигнут лимит страниц*\n\n` +
+                         `Обработано страниц: ${page}\n` +
+                         `Найдено объявлений: ${listingsCount}\n` +
+                         `Ошибок: ${this.stats.errors}\n` +
+                         `Время работы: ${duration} мин\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}\n\n` +
+                         `⚠️ Возможно, на сайте больше объявлений!`;
+            }
+
+            if (message) {
+                await telegramService.sendMessage(message);
+            }
+        } catch (error) {
+            console.warn(`⚠️ Ошибка отправки уведомления в Telegram:`, error.message);
+        }
+    }
+
+    /**
+     * Отправка уведомления об ошибке в Telegram
+     */
+    async sendErrorNotification(page, error, url = 'unknown', isCritical = false) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const emoji = isCritical ? '🚨' : '⚠️';
+            const message = `${emoji} *Autotraders: Ошибка парсинга*\n\n` +
+                          `Страница: ${page}\n` +
+                          `Ошибка: ${error.name || 'Unknown'}\n` +
+                          `Сообщение: ${error.message}\n` +
+                          (url !== 'unknown' ? `URL: ${url}\n` : '') +
+                          `Всего ошибок: ${this.stats.errors}\n` +
+                          `Время: ${new Date().toLocaleString('ru-RU')}`;
+
+            await telegramService.sendMessage(message);
+        } catch (telegramError) {
+            console.warn(`⚠️ Ошибка отправки уведомления об ошибке:`, telegramError.message);
+        }
     }
 
     /**

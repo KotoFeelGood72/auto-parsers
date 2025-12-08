@@ -4,6 +4,7 @@ async function startBrowser() {
     // Определяем режим: headless в Docker, обычный режим локально
     const isHeadless = process.env.NODE_ENV === 'production' || process.env.DOCKER === 'true';
     const browser = await chromium.launch({ 
+        // headless: false,
         headless: isHeadless,
         args: ['--no-sandbox', '--disable-setuid-sandbox'] // Для Docker
     });

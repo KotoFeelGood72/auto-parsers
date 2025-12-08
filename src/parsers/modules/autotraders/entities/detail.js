@@ -1,3 +1,5 @@
+const { telegramService } = require('../../../../services/TelegramService');
+
 /**
  * Парсинг детальной информации для Autotraders.com
  */
@@ -5,6 +7,9 @@
 class AutotradersDetailParser {
     constructor(config) {
         this.config = config;
+        
+        // Счетчик ошибок для логирования
+        this.errorCount = 0;
         
         // Селекторы для детальной страницы Autotraders.ae
         this.selectors = {
@@ -49,82 +54,196 @@ class AutotradersDetailParser {
      * Парсинг детальной страницы автомобиля
      */
     async parseCarDetails(url, context) {
+        if (!url || !context) {
+            console.error('❌ Некорректные параметры для parseCarDetails');
+            return null;
+        }
+
         const page = await context.newPage();
 
         try {
             console.log(`🚗 Переходим к ${url}`);
             
-            await page.setExtraHTTPHeaders({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            });
+            // Безопасная установка заголовков
+            try {
+                await page.setExtraHTTPHeaders({
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                });
+            } catch (headerError) {
+                console.warn(`⚠️ Ошибка установки заголовков:`, headerError.message);
+            }
 
-            await page.goto(url, {
-                waitUntil: "domcontentloaded",
-                timeout: 15000
-            });
+            // Безопасная загрузка страницы
+            try {
+                await page.goto(url, {
+                    waitUntil: "domcontentloaded",
+                    timeout: 30000 // Увеличиваем таймаут
+                });
+            } catch (gotoError) {
+                throw new Error(`Ошибка загрузки страницы: ${gotoError.message}`);
+            }
+
+            // Проверяем, что страница загрузилась
+            const pageTitle = await page.title().catch(() => null);
+            if (!pageTitle) {
+                throw new Error('Страница не загрузилась (нет title)');
+            }
 
             console.log("📄 Загружаем данные...");
 
             // Ждем загрузки основных элементов
             await page.waitForTimeout(2000);
 
-            // Извлекаем основные поля из страницы
-            const title = await this.extractTitle(page);
-            const priceData = await this.extractPrice(page);
-            const location = await this.extractLocation(page);
+            // Безопасное извлечение данных с обработкой ошибок
+            let title, priceData, location, make, model, year, bodyType, fuelType, transmission;
+            let kilometers, exteriorColor, sellerName, sellerType, sellerLogo, phoneNumber, photos;
 
-            // Извлекаем детали автомобиля
-            const make = await this.extractMake(page);
-            const model = await this.extractModel(page);
-            const year = await this.extractYear(page);
-            
-            const bodyType = await this.extractBodyType(page);
-            const fuelType = await this.extractFuelType(page);
-            const transmission = await this.extractTransmission(page);
-            
-            const kilometers = await this.extractKilometers(page);
-            
-            const exteriorColor = await this.extractColor(page);
+            try {
+                title = await this.extractTitle(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения title:`, error.message);
+                title = "Не указано";
+            }
 
-            // Данные о продавце
-            const sellerName = await this.extractSellerName(page);
-            const sellerType = await this.extractSellerType(page);
-            const sellerLogo = await this.extractSellerLogo(page);
-            const phoneNumber = await this.extractPhone(page);
+            try {
+                priceData = await this.extractPrice(page);
+                if (!priceData || !priceData.formatted) {
+                    priceData = { raw: 0, formatted: "Не указано" };
+                }
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения price:`, error.message);
+                priceData = { raw: 0, formatted: "Не указано" };
+            }
 
-            // Получаем фотографии
-            const photos = await this.extractPhotos(page);
-            const mainImage = photos.length > 0 ? photos[0] : null;
+            try {
+                location = await this.extractLocation(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения location:`, error.message);
+                location = "Не указано";
+            }
+
+            try {
+                make = await this.extractMake(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения make:`, error.message);
+                make = "Не указано";
+            }
+
+            try {
+                model = await this.extractModel(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения model:`, error.message);
+                model = "Не указано";
+            }
+
+            try {
+                year = await this.extractYear(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения year:`, error.message);
+                year = "Не указано";
+            }
+
+            try {
+                bodyType = await this.extractBodyType(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения bodyType:`, error.message);
+                bodyType = "Не указано";
+            }
+
+            try {
+                fuelType = await this.extractFuelType(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения fuelType:`, error.message);
+                fuelType = "Не указано";
+            }
+
+            try {
+                transmission = await this.extractTransmission(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения transmission:`, error.message);
+                transmission = "Не указано";
+            }
+
+            try {
+                kilometers = await this.extractKilometers(page) || "0";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения kilometers:`, error.message);
+                kilometers = "0";
+            }
+
+            try {
+                exteriorColor = await this.extractColor(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения color:`, error.message);
+                exteriorColor = "Не указано";
+            }
+
+            try {
+                sellerName = await this.extractSellerName(page) || "Не указано";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения sellerName:`, error.message);
+                sellerName = "Не указано";
+            }
+
+            try {
+                sellerType = await this.extractSellerType(page) || "Частное лицо";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения sellerType:`, error.message);
+                sellerType = "Частное лицо";
+            }
+
+            try {
+                sellerLogo = await this.extractSellerLogo(page) || null;
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения sellerLogo:`, error.message);
+                sellerLogo = null;
+            }
+
+            try {
+                phoneNumber = await this.extractPhone(page) || "Не указан";
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения phone:`, error.message);
+                phoneNumber = "Не указан";
+            }
+
+            try {
+                photos = await this.extractPhotos(page) || [];
+            } catch (error) {
+                console.warn(`⚠️ Ошибка извлечения photos:`, error.message);
+                photos = [];
+            }
+
+            const mainImage = photos && photos.length > 0 ? photos[0] : null;
 
             // Составляем итоговый объект
             const carDetails = {
                 short_url: url,
-                title,
-                photos,
+                title: title || "Не указано",
+                photos: photos || [],
                 main_image: mainImage,
-                make,
-                model,
-                year,
-                body_type: bodyType,
+                make: make || "Не указано",
+                model: model || "Не указано",
+                year: year || "Не указано",
+                body_type: bodyType || "Не указано",
                 horsepower: "Не указано",
-                fuel_type: fuelType,
-                motors_trim: transmission,
-                kilometers,
+                fuel_type: fuelType || "Не указано",
+                motors_trim: transmission || "Не указано",
+                kilometers: kilometers || "0",
                 sellers: {
-                    sellerName,
-                    sellerType,
-                    sellerLogo,
+                    sellerName: sellerName || "Не указано",
+                    sellerType: sellerType || "Частное лицо",
+                    sellerLogo: sellerLogo || null,
                     sellerProfileLink: null,
                 },
                 price: {
-                    formatted: priceData.formatted,
-                    raw: priceData.raw,
+                    formatted: priceData?.formatted || "Не указано",
+                    raw: priceData?.raw || 0,
                     currency: "AED",
                 },
-                exterior_color: exteriorColor,
-                location,
+                exterior_color: exteriorColor || "Не указано",
+                location: location || "Не указано",
                 contact: {
-                    phone: phoneNumber,
+                    phone: phoneNumber || "Не указан",
                 },
             };
 
@@ -132,10 +251,41 @@ class AutotradersDetailParser {
             return carDetails;
 
         } catch (error) {
-            console.error(`❌ Ошибка при загрузке данных с ${url}:`, error);
+            this.errorCount++;
+            console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
+            
+            // Отправляем уведомление в Telegram при критических ошибках
+            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
+                await this.sendErrorNotification(url, error);
+            }
+            
             return null;
         } finally {
-            await page.close();
+            try {
+                await page.close();
+            } catch (closeError) {
+                console.warn(`⚠️ Ошибка при закрытии страницы:`, closeError.message);
+            }
+        }
+    }
+
+    /**
+     * Отправка уведомления об ошибке в Telegram
+     */
+    async sendErrorNotification(url, error) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const message = `⚠️ *Autotraders: Ошибка парсинга детальной страницы*\n\n` +
+                          `URL: ${url}\n` +
+                          `Ошибка: ${error.name || 'Unknown'}\n` +
+                          `Сообщение: ${error.message}\n` +
+                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Время: ${new Date().toLocaleString('ru-RU')}`;
+
+            await telegramService.sendMessage(message);
+        } catch (telegramError) {
+            console.warn(`⚠️ Ошибка отправки уведомления:`, telegramError.message);
         }
     }
 
@@ -144,8 +294,12 @@ class AutotradersDetailParser {
      */
     async safeEval(page, selector, fn) {
         try {
+            if (!page || !selector || !fn) {
+                return null;
+            }
             return await page.$eval(selector, fn);
-        } catch {
+        } catch (error) {
+            console.warn(`⚠️ Ошибка в safeEval для селектора ${selector}:`, error.message);
             return null;
         }
     }
@@ -154,300 +308,518 @@ class AutotradersDetailParser {
      * Извлечение заголовка
      */
     async extractTitle(page) {
-        const title = await page.evaluate(() => {
-            const h2 = document.querySelector('.title h2');
-            return h2 ? h2.textContent.trim() : null;
-        });
-        return title || "Не указано";
+        if (!page) return "Не указано";
+        
+        try {
+            const title = await page.evaluate(() => {
+                try {
+                    const h2 = document.querySelector('.title h2');
+                    return h2 ? h2.textContent.trim() : null;
+                } catch (e) {
+                    return null;
+                }
+            });
+            return title || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения title:`, error.message);
+            return "Не указано";
+        }
     }
 
     /**
      * Извлечение цены
      */
     async extractPrice(page) {
-        const priceData = await page.evaluate(() => {
-            const priceEl = document.querySelector('.price');
-            if (!priceEl) return null;
-            
-            const text = priceEl.textContent.trim();
-            // Извлекаем число (формат: "AED 1,295,000")
-            const match = text.match(/([\d,]+)/);
-            if (match) {
-                const numeric = match[1].replace(/,/g, '');
-                return {
-                    raw: parseInt(numeric, 10),
-                    formatted: text
-                };
-            }
-            return { raw: 0, formatted: text };
-        });
-        return priceData || { raw: 0, formatted: "Не указано" };
+        if (!page) return { raw: 0, formatted: "Не указано" };
+        
+        try {
+            const priceData = await page.evaluate(() => {
+                try {
+                    const priceEl = document.querySelector('.price');
+                    if (!priceEl) return null;
+                    
+                    const text = priceEl.textContent.trim();
+                    if (!text) return null;
+                    
+                    // Извлекаем число (формат: "AED 1,295,000")
+                    const match = text.match(/([\d,]+)/);
+                    if (match) {
+                        const numeric = match[1].replace(/,/g, '');
+                        const raw = parseInt(numeric, 10);
+                        if (!isNaN(raw)) {
+                            return {
+                                raw: raw,
+                                formatted: text
+                            };
+                        }
+                    }
+                    return { raw: 0, formatted: text };
+                } catch (e) {
+                    return null;
+                }
+            });
+            return priceData || { raw: 0, formatted: "Не указано" };
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения price:`, error.message);
+            return { raw: 0, formatted: "Не указано" };
+        }
     }
 
     /**
      * Извлечение марки
      */
     async extractMake(page) {
-        return await page.evaluate(() => {
-            // Сначала пробуем из car-det-list
-            const makeEl = document.querySelector('.car-det-list .detail-col .txt');
-            if (makeEl) return makeEl.textContent.trim();
-            
-            // Если нет, пробуем из .cinml
-            const makeEl2 = document.querySelector('.cinml li:first-child a');
-            return makeEl2 ? makeEl2.textContent.trim() : null;
-        }) || "Не указано";
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Сначала пробуем из car-det-list
+                    const makeEl = document.querySelector('.car-det-list .detail-col .txt');
+                    if (makeEl && makeEl.textContent) {
+                        return makeEl.textContent.trim();
+                    }
+                    
+                    // Если нет, пробуем из .cinml
+                    const makeEl2 = document.querySelector('.cinml li:first-child a');
+                    if (makeEl2 && makeEl2.textContent) {
+                        return makeEl2.textContent.trim();
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
+                }
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения make:`, error.message);
+            return "Не указано";
+        }
     }
 
     /**
      * Извлечение модели
      */
     async extractModel(page) {
-        return await page.evaluate(() => {
-            // Ищем "Model" в car-det-list
-            const details = Array.from(document.querySelectorAll('.car-det-list li'));
-            for (const detail of details) {
-                const cols = detail.querySelectorAll('.detail-col');
-                for (const col of cols) {
-                    const label = col.querySelector('span:first-child').textContent.trim();
-                    const value = col.querySelector('.txt');
-                    if (label === 'Model' && value) {
-                        return value.textContent.trim();
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Ищем "Model" в car-det-list
+                    const details = Array.from(document.querySelectorAll('.car-det-list li'));
+                    for (const detail of details) {
+                        if (!detail) continue;
+                        const cols = detail.querySelectorAll('.detail-col');
+                        for (const col of cols) {
+                            if (!col) continue;
+                            const labelSpan = col.querySelector('span:first-child');
+                            if (!labelSpan || !labelSpan.textContent) continue;
+                            
+                            const label = labelSpan.textContent.trim();
+                            const value = col.querySelector('.txt');
+                            if (label === 'Model' && value && value.textContent) {
+                                return value.textContent.trim();
+                            }
+                        }
                     }
+                    
+                    // Fallback на .cinml
+                    const modelEl = document.querySelector('.cinml li:last-child a');
+                    if (modelEl && modelEl.textContent) {
+                        return modelEl.textContent.trim();
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
                 }
-            }
-            
-            // Fallback на .cinml
-            const modelEl = document.querySelector('.cinml li:last-child a');
-            return modelEl ? modelEl.textContent.trim() : null;
-        }) || "Не указано";
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения model:`, error.message);
+            return "Не указано";
+        }
     }
 
     /**
      * Извлечение года
      */
     async extractYear(page) {
-        return await page.evaluate(() => {
-            // Ищем "Year" в car-det-list
-            const details = Array.from(document.querySelectorAll('.car-det-list li'));
-            for (const detail of details) {
-                const cols = detail.querySelectorAll('.detail-col');
-                for (const col of cols) {
-                    const label = col.querySelector('span:first-child').textContent.trim();
-                    const value = col.querySelector('.txt');
-                    if (label === 'Year' && value) {
-                        return value.textContent.trim();
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Ищем "Year" в car-det-list
+                    const details = Array.from(document.querySelectorAll('.car-det-list li'));
+                    for (const detail of details) {
+                        if (!detail) continue;
+                        const cols = detail.querySelectorAll('.detail-col');
+                        for (const col of cols) {
+                            if (!col) continue;
+                            const labelSpan = col.querySelector('span:first-child');
+                            if (!labelSpan || !labelSpan.textContent) continue;
+                            
+                            const label = labelSpan.textContent.trim();
+                            const value = col.querySelector('.txt');
+                            if (label === 'Year' && value && value.textContent) {
+                                return value.textContent.trim();
+                            }
+                        }
                     }
+                    
+                    // Fallback на .yrkms
+                    const yearEl = document.querySelector('.yrkms li:first-child');
+                    if (yearEl && yearEl.textContent) {
+                        const text = yearEl.textContent.trim();
+                        const year = text.replace(/\D/g, '');
+                        return year || null;
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
                 }
-            }
-            
-            // Fallback на .yrkms
-            const yearEl = document.querySelector('.yrkms li:first-child');
-            if (yearEl) {
-                const text = yearEl.textContent.trim();
-                return text.replace(/\D/g, '');
-            }
-            return null;
-        }) || "Не указано";
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения year:`, error.message);
+            return "Не указано";
+        }
     }
 
     /**
      * Извлечение пробега
      */
     async extractKilometers(page) {
-        return await page.evaluate(() => {
-            // Ищем "Mileage" в car-det-list
-            const details = Array.from(document.querySelectorAll('.car-det-list li'));
-            for (const detail of details) {
-                const cols = detail.querySelectorAll('.detail-col');
-                for (const col of cols) {
-                    const label = col.querySelector('span:first-child').textContent.trim();
-                    const value = col.querySelector('.txt');
-                    if (label === 'Mileage' && value) {
-                        // Возвращаем исходное значение без парсинга
-                        return value.textContent.trim();
+        if (!page) return '0';
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Ищем "Mileage" в car-det-list
+                    const details = Array.from(document.querySelectorAll('.car-det-list li'));
+                    for (const detail of details) {
+                        if (!detail) continue;
+                        const cols = detail.querySelectorAll('.detail-col');
+                        for (const col of cols) {
+                            if (!col) continue;
+                            const labelSpan = col.querySelector('span:first-child');
+                            if (!labelSpan || !labelSpan.textContent) continue;
+                            
+                            const label = labelSpan.textContent.trim();
+                            const value = col.querySelector('.txt');
+                            if (label === 'Mileage' && value && value.textContent) {
+                                // Возвращаем исходное значение без парсинга
+                                return value.textContent.trim();
+                            }
+                        }
                     }
+                    
+                    // Fallback на .yrkms
+                    const kmEl = document.querySelector('.yrkms li:last-child');
+                    if (kmEl && kmEl.textContent) {
+                        // Возвращаем исходное значение без парсинга
+                        return kmEl.textContent.trim();
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
                 }
-            }
-            
-            // Fallback на .yrkms
-            const kmEl = document.querySelector('.yrkms li:last-child');
-            if (kmEl) {
-                // Возвращаем исходное значение без парсинга
-                return kmEl.textContent.trim();
-            }
+            });
+            return result || '0';
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения kilometers:`, error.message);
             return '0';
-        }) || '0';
+        }
     }
 
     /**
      * Извлечение местоположения
      */
     async extractLocation(page) {
-        return await page.evaluate(() => {
-            // Ищем location в user-details
-            const locationEl = document.querySelector('.user-details .location .dcname');
-            if (locationEl) {
-                return locationEl.textContent.trim();
-            }
-            
-            // Fallback на .cincitymn
-            const locationEl2 = document.querySelector('.cincitymn a');
-            return locationEl2 ? locationEl2.textContent.trim() : null;
-        }) || "Не указано";
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Ищем location в user-details
+                    const locationEl = document.querySelector('.user-details .location .dcname');
+                    if (locationEl && locationEl.textContent) {
+                        return locationEl.textContent.trim();
+                    }
+                    
+                    // Fallback на .cincitymn
+                    const locationEl2 = document.querySelector('.cincitymn a');
+                    if (locationEl2 && locationEl2.textContent) {
+                        return locationEl2.textContent.trim();
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
+                }
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения location:`, error.message);
+            return "Не указано";
+        }
     }
 
     /**
      * Извлечение имени продавца
      */
     async extractSellerName(page) {
-        return await page.evaluate(() => {
-            const sellerEl = document.querySelector('.user-details .name .dpname');
-            if (sellerEl) {
-                return sellerEl.textContent.trim();
-            }
-            
-            // Fallback на user-name
-            const sellerEl2 = document.querySelector('.user-name h4 a');
-            return sellerEl2 ? sellerEl2.textContent.trim() : null;
-        }) || "Не указано";
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    const sellerEl = document.querySelector('.user-details .name .dpname');
+                    if (sellerEl && sellerEl.textContent) {
+                        return sellerEl.textContent.trim();
+                    }
+                    
+                    // Fallback на user-name
+                    const sellerEl2 = document.querySelector('.user-name h4 a');
+                    if (sellerEl2 && sellerEl2.textContent) {
+                        return sellerEl2.textContent.trim();
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
+                }
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения sellerName:`, error.message);
+            return "Не указано";
+        }
     }
 
     /**
      * Извлечение типа продавца
      */
     async extractSellerType(page) {
-        return await page.evaluate(() => {
-            // Проверяем, есть ли логотип в user-details - значит дилер
-            const hasLogo = document.querySelector('.user-details .logo img') || document.querySelector('.image-user img');
-            if (hasLogo) {
-                return 'Dealer';
-            }
-            
-            // Проверяем название - если есть "Private" значит частное лицо
-            const name = document.querySelector('.user-details .name .dpname');
-            if (name && name.textContent.toLowerCase().includes('private')) {
-                return 'Private';
-            }
-            
-            return hasLogo ? 'Dealer' : 'Private';
-        }) || "Частное лицо";
+        if (!page) return "Частное лицо";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Проверяем, есть ли логотип в user-details - значит дилер
+                    const hasLogo = document.querySelector('.user-details .logo img') || document.querySelector('.image-user img');
+                    if (hasLogo) {
+                        return 'Dealer';
+                    }
+                    
+                    // Проверяем название - если есть "Private" значит частное лицо
+                    const name = document.querySelector('.user-details .name .dpname');
+                    if (name && name.textContent && name.textContent.toLowerCase().includes('private')) {
+                        return 'Private';
+                    }
+                    
+                    return hasLogo ? 'Dealer' : 'Private';
+                } catch (e) {
+                    return 'Private';
+                }
+            });
+            return result || "Частное лицо";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения sellerType:`, error.message);
+            return "Частное лицо";
+        }
     }
 
     /**
      * Извлечение логотипа продавца
      */
     async extractSellerLogo(page) {
-        return await page.evaluate(() => {
-            const logoEl = document.querySelector('.user-details .logo img');
-            if (logoEl && logoEl.src) {
-                return logoEl.src;
-            }
-            
-            // Fallback на .image-user img
-            const logoEl2 = document.querySelector('.image-user img');
-            if (logoEl2 && logoEl2.src) {
-                return logoEl2.src;
-            }
+        if (!page) return null;
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    const logoEl = document.querySelector('.user-details .logo img');
+                    if (logoEl && logoEl.src && logoEl.src.startsWith('http')) {
+                        return logoEl.src;
+                    }
+                    
+                    // Fallback на .image-user img
+                    const logoEl2 = document.querySelector('.image-user img');
+                    if (logoEl2 && logoEl2.src && logoEl2.src.startsWith('http')) {
+                        return logoEl2.src;
+                    }
+                    return null;
+                } catch (e) {
+                    return null;
+                }
+            });
+            return result || null;
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения sellerLogo:`, error.message);
             return null;
-        }) || null;
+        }
     }
 
     /**
      * Извлечение телефона
      */
     async extractPhone(page) {
-        return await page.evaluate(() => {
-            // Некоторые объявления показывают телефон в WhatsApp сообщении
-            const descEl = document.querySelector('.car-desc p');
-            if (descEl) {
-                const text = descEl.textContent;
-                const phoneMatch = text.match(/\+?\d{1,3}[\s-]?\d{1,4}[\s-]?\d{1,4}[\s-]?\d{1,9}/);
-                if (phoneMatch) {
-                    return phoneMatch[0];
+        if (!page) return "Не указан";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Некоторые объявления показывают телефон в WhatsApp сообщении
+                    const descEl = document.querySelector('.car-desc p');
+                    if (descEl && descEl.textContent) {
+                        const text = descEl.textContent;
+                        const phoneMatch = text.match(/\+?\d{1,3}[\s-]?\d{1,4}[\s-]?\d{1,4}[\s-]?\d{1,9}/);
+                        if (phoneMatch && phoneMatch[0]) {
+                            return phoneMatch[0];
+                        }
+                    }
+                    
+                    // Пытаемся найти в href ссылки
+                    const callEl = document.querySelector('.show_number');
+                    if (callEl && callEl.href) {
+                        return callEl.href.replace('tel:', '');
+                    }
+                    
+                    return null;
+                } catch (e) {
+                    return null;
                 }
-            }
-            
-            // Пытаемся найти в href ссылки
-            const callEl = document.querySelector('.show_number');
-            if (callEl && callEl.href) {
-                return callEl.href.replace('tel:', '');
-            }
-            
-            return null;
-        }) || "Не указан";
+            });
+            return result || "Не указан";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения phone:`, error.message);
+            return "Не указан";
+        }
     }
 
     /**
      * Извлечение фото
      */
     async extractPhotos(page) {
-        return await page.evaluate(() => {
-            // Извлекаем ссылки на изображения из lightgallery
-            const galleryImages = Array.from(document.querySelectorAll('.image-gallery.lightgallery a.lightgallery.item'));
-            const photos = galleryImages.map(link => {
-                const href = link.getAttribute('href');
-                if (href && href.startsWith('http')) {
-                    return href;
+        if (!page) return [];
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    // Извлекаем ссылки на изображения из lightgallery
+                    const galleryImages = Array.from(document.querySelectorAll('.image-gallery.lightgallery a.lightgallery.item'));
+                    const photos = galleryImages.map(link => {
+                        if (!link) return null;
+                        
+                        const href = link.getAttribute('href');
+                        if (href && href.startsWith('http')) {
+                            return href;
+                        }
+                        // Попробуем взять из img внутри
+                        const img = link.querySelector('img');
+                        if (img) {
+                            const src = img.getAttribute('data-src') || img.src;
+                            return src && src.startsWith('http') ? src : null;
+                        }
+                        return null;
+                    }).filter(Boolean);
+                    
+                    // Если не нашли в gallery, пробуем взять из thumbnail
+                    if (photos.length === 0) {
+                        const thumbImages = Array.from(document.querySelectorAll('.thumbnail img'));
+                        const thumbPhotos = thumbImages.map(img => {
+                            if (!img) return null;
+                            const src = img.getAttribute('src') || img.src;
+                            return src && src.startsWith('http') ? src : null;
+                        }).filter(Boolean);
+                        return Array.from(new Set(thumbPhotos));
+                    }
+                    
+                    return Array.from(new Set(photos));
+                } catch (e) {
+                    return [];
                 }
-                // Попробуем взять из img внутри
-                const img = link.querySelector('img');
-                if (img) {
-                    const src = img.getAttribute('data-src') || img.src;
-                    return src && src.startsWith('http') ? src : null;
-                }
-                return null;
-            }).filter(Boolean);
-            
-            // Если не нашли в gallery, пробуем взять из thumbnail
-            if (photos.length === 0) {
-                const thumbImages = Array.from(document.querySelectorAll('.thumbnail img'));
-                const thumbPhotos = thumbImages.map(img => {
-                    const src = img.getAttribute('src');
-                    return src && src.startsWith('http') ? src : null;
-                }).filter(Boolean);
-                return Array.from(new Set(thumbPhotos));
-            }
-            
-            return Array.from(new Set(photos));
-        }) || [];
+            });
+            return result || [];
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения photos:`, error.message);
+            return [];
+        }
     }
 
     /**
      * Вспомогательные методы для типов
      */
     async extractBodyType(page) {
-        return await page.evaluate(() => {
-            const details = Array.from(document.querySelectorAll('.car-det-list li'));
-            for (const detail of details) {
-                const cols = detail.querySelectorAll('.detail-col');
-                for (const col of cols) {
-                    const label = col.querySelector('span:first-child').textContent.trim();
-                    if (label === 'Body Type') {
-                        const spans = col.querySelectorAll('span');
-                        return spans.length > 1 ? spans[1].textContent.trim() : null;
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    const details = Array.from(document.querySelectorAll('.car-det-list li'));
+                    for (const detail of details) {
+                        if (!detail) continue;
+                        const cols = detail.querySelectorAll('.detail-col');
+                        for (const col of cols) {
+                            if (!col) continue;
+                            const labelSpan = col.querySelector('span:first-child');
+                            if (!labelSpan || !labelSpan.textContent) continue;
+                            
+                            const label = labelSpan.textContent.trim();
+                            if (label === 'Body Type') {
+                                const spans = col.querySelectorAll('span');
+                                if (spans.length > 1 && spans[1].textContent) {
+                                    return spans[1].textContent.trim();
+                                }
+                            }
+                        }
                     }
+                    return null;
+                } catch (e) {
+                    return null;
                 }
-            }
-            return null;
-        }) || "Не указано";
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения bodyType:`, error.message);
+            return "Не указано";
+        }
     }
 
     async extractFuelType(page) {
-        return await page.evaluate(() => {
-            const details = Array.from(document.querySelectorAll('.car-det-list li'));
-            for (const detail of details) {
-                const cols = detail.querySelectorAll('.detail-col');
-                for (const col of cols) {
-                    const label = col.querySelector('span:first-child').textContent.trim();
-                    if (label === 'Fuel Type') {
-                        const spans = col.querySelectorAll('span');
-                        return spans.length > 1 ? spans[1].textContent.trim() : null;
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    const details = Array.from(document.querySelectorAll('.car-det-list li'));
+                    for (const detail of details) {
+                        if (!detail) continue;
+                        const cols = detail.querySelectorAll('.detail-col');
+                        for (const col of cols) {
+                            if (!col) continue;
+                            const labelSpan = col.querySelector('span:first-child');
+                            if (!labelSpan || !labelSpan.textContent) continue;
+                            
+                            const label = labelSpan.textContent.trim();
+                            if (label === 'Fuel Type') {
+                                const spans = col.querySelectorAll('span');
+                                if (spans.length > 1 && spans[1].textContent) {
+                                    return spans[1].textContent.trim();
+                                }
+                            }
+                        }
                     }
+                    return null;
+                } catch (e) {
+                    return null;
                 }
-            }
-            return null;
-        }) || "Не указано";
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения fuelType:`, error.message);
+            return "Не указано";
+        }
     }
 
     async extractTransmission(page) {
@@ -456,20 +828,39 @@ class AutotradersDetailParser {
     }
 
     async extractColor(page) {
-        return await page.evaluate(() => {
-            const details = Array.from(document.querySelectorAll('.car-det-list li'));
-            for (const detail of details) {
-                const cols = detail.querySelectorAll('.detail-col');
-                for (const col of cols) {
-                    const label = col.querySelector('span:first-child').textContent.trim();
-                    if (label === 'Exterior Color') {
-                        const spans = col.querySelectorAll('span');
-                        return spans.length > 1 ? spans[1].textContent.trim() : null;
+        if (!page) return "Не указано";
+        
+        try {
+            const result = await page.evaluate(() => {
+                try {
+                    const details = Array.from(document.querySelectorAll('.car-det-list li'));
+                    for (const detail of details) {
+                        if (!detail) continue;
+                        const cols = detail.querySelectorAll('.detail-col');
+                        for (const col of cols) {
+                            if (!col) continue;
+                            const labelSpan = col.querySelector('span:first-child');
+                            if (!labelSpan || !labelSpan.textContent) continue;
+                            
+                            const label = labelSpan.textContent.trim();
+                            if (label === 'Exterior Color') {
+                                const spans = col.querySelectorAll('span');
+                                if (spans.length > 1 && spans[1].textContent) {
+                                    return spans[1].textContent.trim();
+                                }
+                            }
+                        }
                     }
+                    return null;
+                } catch (e) {
+                    return null;
                 }
-            }
-            return null;
-        }) || "Не указано";
+            });
+            return result || "Не указано";
+        } catch (error) {
+            console.warn(`⚠️ Ошибка извлечения color:`, error.message);
+            return "Не указано";
+        }
     }
 
     /**
