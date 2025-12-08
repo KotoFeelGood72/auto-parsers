@@ -60,6 +60,40 @@ class CarswitchDetailParser {
     }
 
     /**
+     * Проверка наличия капчи на странице
+     */
+    async checkCaptcha(page) {
+        try {
+            const captchaInfo = await page.evaluate(() => {
+                // Проверяем Amazon WAF капчу
+                const amazonWafSelectors = [
+                    '#captcha-container',
+                    '#amzn-captcha-verify-button',
+                    '.amzn-captcha-verify-button'
+                ];
+                
+                for (const selector of amazonWafSelectors) {
+                    if (document.querySelector(selector)) {
+                        return { hasCaptcha: true, type: 'Amazon WAF' };
+                    }
+                }
+                
+                const bodyText = document.body ? document.body.textContent : '';
+                if (bodyText.includes('Let\'s confirm you are human') ||
+                    bodyText.includes('Complete the security check')) {
+                    return { hasCaptcha: true, type: 'Amazon WAF' };
+                }
+                
+                return { hasCaptcha: false, type: null };
+            });
+            
+            return captchaInfo;
+        } catch (error) {
+            return { hasCaptcha: false, type: null };
+        }
+    }
+
+    /**
      * Парсинг детальной страницы автомобиля
      */
     async parseCarDetails(url, context) {
@@ -70,12 +104,52 @@ class CarswitchDetailParser {
             
             await page.setExtraHTTPHeaders({
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": this.config.baseUrl || "https://www.carswitch.com"
             });
+
+            // Добавляем случайную задержку перед загрузкой
+            const randomDelay = Math.floor(Math.random() * 1500) + 1000;
+            await this.sleep(randomDelay);
 
             await page.goto(url, {
                 waitUntil: "domcontentloaded",
-                timeout: 15000
+                timeout: 30000
             });
+
+            // Проверяем наличие капчи
+            const captchaInfo = await this.checkCaptcha(page);
+            if (captchaInfo.hasCaptcha) {
+                console.warn(`⚠️ Обнаружена капча ${captchaInfo.type} на детальной странице: ${url}`);
+                
+                // Пробуем решить капчу автоматически для Amazon WAF
+                if (captchaInfo.type === 'Amazon WAF') {
+                    const { captchaService } = require('../../../../services/CaptchaService');
+                    if (captchaService.getStatus().enabled) {
+                        console.log(`🤖 Пробуем решить капчу автоматически...`);
+                        const solved = await captchaService.solveAmazonWAF(page, url);
+                        if (solved) {
+                            console.log(`✅ Капча успешно решена!`);
+                            await page.waitForTimeout(2000);
+                        } else {
+                            console.warn(`⚠️ Не удалось решить капчу автоматически, ожидаем...`);
+                            await page.waitForTimeout(15000);
+                        }
+                    } else {
+                        console.log(`⏳ Ожидаем 15 секунд для возможного решения капчи...`);
+                        await page.waitForTimeout(15000);
+                    }
+                } else {
+                    await page.waitForTimeout(10000);
+                }
+                
+                // Проверяем еще раз
+                const stillHasCaptcha = await this.checkCaptcha(page);
+                if (stillHasCaptcha.hasCaptcha) {
+                    console.warn(`⚠️ Капча все еще присутствует. Пропускаем объявление.`);
+                    return null;
+                }
+            }
 
             console.log("📄 Загружаем данные...");
 
@@ -340,6 +414,13 @@ class CarswitchDetailParser {
             if (map[k] != null) return map[k];
         }
         return def;
+    }
+
+    /**
+     * Утилита для паузы
+     */
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 

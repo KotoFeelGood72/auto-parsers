@@ -67,9 +67,9 @@ class ParserRunner {
 
         // Инициализируем браузер
         try {
-            const browserData = await startBrowser();
-            this.browser = browserData.browser;
-            this.context = browserData.context;
+            const { createStealthContext } = require('../utils/browser');
+            this.browser = await startBrowser();
+            this.context = await createStealthContext(this.browser);
         } catch (error) {
             console.error("❌ Не удалось инициализировать браузер:", error);
             await errorHandler.handleBrowserError('ParserRunner', error, {

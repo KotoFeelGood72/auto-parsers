@@ -1,5 +1,6 @@
 const { CarswitchParser } = require('./CarswitchParser');
 const { configLoader } = require('../../ConfigLoader');
+const { telegramService } = require('../../../services/TelegramService');
 
 /**
  * Модуль парсера Carswitch
@@ -96,14 +97,25 @@ class CarswitchModule {
             console.log(`🚀 Инициализация модуля ${this.name}...`);
             
             // Инициализируем браузер
-            const { startBrowser } = require('../../../utils/browser');
+            const { startBrowser, createStealthContext } = require('../../../utils/browser');
             this.browser = await startBrowser();
-            this.context = await this.browser.newContext();
+            
+            // Создаем контекст с полной защитой от fingerprinting
+            this.context = await createStealthContext(this.browser, {
+                locale: 'en-US',
+                timezoneId: 'America/New_York',
+                permissions: ['geolocation'],
+                geolocation: { latitude: 25.2048, longitude: 55.2708 }, // Координаты ОАЭ
+                extraHTTPHeaders: {
+                    'Referer': this.config.baseUrl || 'https://www.carswitch.com',
+                    'Origin': this.config.baseUrl || 'https://www.carswitch.com'
+                }
+            });
             
             // Инициализируем парсер с контекстом
             await this.parser.initialize(this.context);
             
-            console.log(`✅ Модуль ${this.name} инициализирован`);
+            console.log(`✅ Модуль ${this.name} инициализирован с настройками обхода reCAPTCHA`);
             return true;
         } catch (error) {
             console.error(`❌ Ошибка инициализации модуля ${this.name}:`, error.message);

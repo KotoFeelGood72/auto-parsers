@@ -1,3 +1,6 @@
+const { telegramService } = require('../../../../services/TelegramService');
+const { captchaService } = require('../../../../services/CaptchaService');
+
 /**
  * Парсинг списка объявлений для Carswitch.com
  */
@@ -16,6 +19,239 @@ class CarswitchListingParser {
             "main",
             "body"
         ];
+        
+        // Счетчик капч для логирования
+        this.captchaCount = 0;
+    }
+
+    /**
+     * Проверка наличия капчи (reCAPTCHA или Amazon WAF) на странице
+     */
+    async checkCaptcha(page) {
+        try {
+            const captchaInfo = await page.evaluate(() => {
+                // Проверяем модальное окно Amazon WAF капчи
+                const modal = document.querySelector('.amzn-captcha-modal');
+                if (modal && modal.offsetParent !== null) {
+                    // Проверяем, есть ли активный пазл
+                    const canvas = modal.querySelector('canvas');
+                    const puzzleText = modal.textContent || '';
+                    if (canvas || puzzleText.includes('Choose all') || puzzleText.includes('Confirm')) {
+                        return { 
+                            hasCaptcha: true, 
+                            type: 'Amazon WAF', 
+                            selector: '.amzn-captcha-modal',
+                            isActive: true,
+                            hasPuzzle: !!canvas
+                        };
+                    }
+                }
+                
+                // Проверяем контейнер капчи
+                const container = document.querySelector('#captcha-container');
+                if (container) {
+                    const modal = container.querySelector('.amzn-captcha-modal');
+                    if (modal) {
+                        return { 
+                            hasCaptcha: true, 
+                            type: 'Amazon WAF', 
+                            selector: '#captcha-container',
+                            isActive: true
+                        };
+                    }
+                }
+                
+                // Проверяем кнопки Amazon WAF
+                const verifyButton = document.querySelector('#amzn-btn-verify-internal, #amzn-captcha-verify-button');
+                if (verifyButton) {
+                    return { 
+                        hasCaptcha: true, 
+                        type: 'Amazon WAF', 
+                        selector: 'button',
+                        isActive: true
+                    };
+                }
+                
+                // Проверяем текст на странице для Amazon WAF
+                const bodyText = document.body ? document.body.textContent : '';
+                if (bodyText.includes('Let\'s confirm you are human') ||
+                    bodyText.includes('Complete the security check') ||
+                    bodyText.includes('Choose all') ||
+                    bodyText.includes('Before proceeding to your request, you need to solve a puzzle')) {
+                    return { 
+                        hasCaptcha: true, 
+                        type: 'Amazon WAF', 
+                        selector: 'text',
+                        isActive: true
+                    };
+                }
+                
+                // Проверяем Google reCAPTCHA
+                const recaptchaSelectors = [
+                    '.g-recaptcha',
+                    '#recaptcha',
+                    '.recaptcha',
+                    'iframe[src*="recaptcha"]',
+                    'iframe[src*="google.com/recaptcha"]',
+                    '[data-sitekey]',
+                    '.rc-anchor',
+                    '#rc-imageselect'
+                ];
+                
+                for (const selector of recaptchaSelectors) {
+                    try {
+                        if (document.querySelector(selector)) {
+                            return { hasCaptcha: true, type: 'Google reCAPTCHA', selector: selector };
+                        }
+                    } catch (e) {
+                        // Продолжаем поиск
+                    }
+                }
+                
+                // Проверяем текст на странице для Google reCAPTCHA
+                const bodyTextLower = bodyText.toLowerCase();
+                if (bodyTextLower.includes('recaptcha') || 
+                    bodyTextLower.includes('verify you are human') ||
+                    bodyTextLower.includes('verify you\'re not a robot')) {
+                    return { hasCaptcha: true, type: 'Google reCAPTCHA', selector: 'text' };
+                }
+                
+                return { hasCaptcha: false, type: null, selector: null, isActive: false };
+            });
+            
+            return captchaInfo;
+        } catch (error) {
+            console.warn(`⚠️ Ошибка при проверке капчи:`, error.message);
+            return { hasCaptcha: false, type: null, selector: null, isActive: false };
+        }
+    }
+
+    /**
+     * Обработка капчи (ожидание или пропуск)
+     */
+    async handleCaptcha(page, url, pageNumber) {
+        const captchaInfo = await this.checkCaptcha(page);
+        
+        if (captchaInfo.hasCaptcha) {
+            this.captchaCount++;
+            console.warn(`⚠️ Обнаружена капча ${captchaInfo.type} на странице: ${url}`);
+            
+            // Отправляем уведомление в Telegram
+            if (telegramService.getStatus().enabled) {
+                await this.sendCaptchaNotification(url, captchaInfo.type, pageNumber);
+            }
+            
+            // Для Amazon WAF с активным пазлом
+            if (captchaInfo.type === 'Amazon WAF' && captchaInfo.isActive) {
+                console.log(`🧩 Обнаружен активный пазл Amazon WAF. Ожидаем решения...`);
+                
+                // Пробуем решить капчу через сервис
+                if (captchaService.getStatus().enabled) {
+                    console.log(`🤖 Пробуем решить капчу автоматически через ${captchaService.getStatus().provider}...`);
+                    const solved = await captchaService.solveAmazonWAF(page, url);
+                    if (solved) {
+                        console.log(`✅ Капча успешно решена автоматически!`);
+                        await page.waitForTimeout(3000);
+                        
+                        // Проверяем, исчезла ли капча
+                        const stillHasCaptcha = await this.checkCaptcha(page);
+                        if (!stillHasCaptcha.hasCaptcha) {
+                            return true;
+                        }
+                    } else {
+                        console.warn(`⚠️ Не удалось решить капчу автоматически. Ожидаем ручного решения...`);
+                    }
+                } else {
+                    console.log(`ℹ️ Автоматическое решение отключено. Ожидаем ручного решения (60 секунд)...`);
+                    console.log(`💡 Подсказка: Установите CAPTCHA_API_KEY для автоматического решения`);
+                }
+                
+                // Ожидаем решения капчи (ручного или автоматического)
+                const maxWaitTime = 60000; // 60 секунд для ручного решения
+                const checkInterval = 3000; // Проверяем каждые 3 секунды
+                const startTime = Date.now();
+                
+                while (Date.now() - startTime < maxWaitTime) {
+                    await page.waitForTimeout(checkInterval);
+                    
+                    // Проверяем, решена ли капча
+                    const currentCaptcha = await this.checkCaptcha(page);
+                    if (!currentCaptcha.hasCaptcha || !currentCaptcha.isActive) {
+                        console.log(`✅ Капча решена! Продолжаем парсинг...`);
+                        await page.waitForTimeout(2000); // Даем время на перезагрузку страницы
+                        return true;
+                    }
+                    
+                    // Проверяем, не появилась ли кнопка подтверждения (значит пазл решен)
+                    const confirmButton = await page.$('#amzn-btn-verify-internal:not([disabled])');
+                    if (confirmButton) {
+                        try {
+                            const buttonText = await confirmButton.textContent();
+                            if (buttonText && buttonText.includes('Confirm')) {
+                                console.log(`🖱️ Найдена кнопка "Confirm", кликаем...`);
+                                await confirmButton.click();
+                                await page.waitForTimeout(3000);
+                                
+                                // Проверяем еще раз
+                                const finalCheck = await this.checkCaptcha(page);
+                                if (!finalCheck.hasCaptcha) {
+                                    console.log(`✅ Капча успешно подтверждена!`);
+                                    return true;
+                                }
+                            }
+                        } catch (e) {
+                            // Продолжаем ожидание
+                        }
+                    }
+                    
+                    const elapsed = Math.round((Date.now() - startTime) / 1000);
+                    if (elapsed % 10 === 0) {
+                        console.log(`⏳ Ожидаем решения капчи... (${elapsed}с / ${maxWaitTime / 1000}с)`);
+                    }
+                }
+                
+                // Время ожидания истекло
+                console.warn(`⚠️ Время ожидания решения капчи истекло (${maxWaitTime / 1000}с). Пропускаем страницу.`);
+                return false;
+            }
+            
+            // Для других типов капчи или неактивной капчи
+            console.log(`⏳ Ожидаем 15 секунд для возможного решения капчи...`);
+            await page.waitForTimeout(15000);
+            
+            // Проверяем еще раз
+            const stillHasCaptcha = await this.checkCaptcha(page);
+            if (stillHasCaptcha.hasCaptcha && stillHasCaptcha.isActive) {
+                console.warn(`⚠️ Капча ${stillHasCaptcha.type} все еще присутствует. Пропускаем страницу.`);
+                return false;
+            } else {
+                console.log(`✅ Капча исчезла, продолжаем парсинг`);
+                return true;
+            }
+        }
+        
+        return true; // Нет капчи, продолжаем
+    }
+
+    /**
+     * Отправка уведомления о капче в Telegram
+     */
+    async sendCaptchaNotification(url, captchaType, pageNumber) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const message = `🚨 *Carswitch: Обнаружена капча*\n\n` +
+                          `Тип: ${captchaType}\n` +
+                          `Страница: ${pageNumber}\n` +
+                          `URL: ${url}\n` +
+                          `Всего капч: ${this.captchaCount}\n` +
+                          `Время: ${new Date().toLocaleString('ru-RU')}\n\n` +
+                          `⚠️ Парсер пытается обойти капчу...`;
+
+            await telegramService.sendMessage(message);
+        } catch (telegramError) {
+            console.warn(`⚠️ Ошибка отправки уведомления о капче:`, telegramError.message);
+        }
     }
 
     /**
@@ -29,23 +265,52 @@ class CarswitchListingParser {
             const page = await context.newPage();
 
             try {
+                // Настраиваем заголовки для каждой страницы
+                await page.setExtraHTTPHeaders({
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Referer': this.config.baseUrl || 'https://www.carswitch.com',
+                    'Origin': this.config.baseUrl || 'https://www.carswitch.com'
+                });
+
                 console.log("🔍 Открываем каталог Carswitch...");
 
                 while (true) {
                     const url = `${this.config.listingsUrl}?page=${currentPage}`;
                     console.log(`📄 Загружаем страницу: ${url}`);
 
+                    // Добавляем случайную задержку перед загрузкой страницы (имитация человеческого поведения)
+                    const randomDelay = Math.floor(Math.random() * 2000) + 1000; // 1-3 секунды
+                    await this.sleep(randomDelay);
+
                     await page.goto(url, { 
-                        waitUntil: "domcontentloaded", 
+                        waitUntil: "domcontentloaded", // Используем domcontentloaded для быстрой загрузки
                         timeout: 60000 
                     });
+
+                    // Ждем немного для загрузки контента
+                    await page.waitForTimeout(2000);
+
+                    // Проверяем наличие капчи (Amazon WAF или reCAPTCHA)
+                    const canContinue = await this.handleCaptcha(page, url, currentPage);
+                    if (!canContinue) {
+                        console.warn(`⚠️ Пропускаем страницу ${currentPage} из-за капчи`);
+                        currentPage++;
+                        // Увеличиваем задержку перед следующей страницей
+                        await this.sleep(5000);
+                        continue;
+                    }
 
                     // Ждем загрузки страницы
                     await page.waitForTimeout(3000);
 
-                    // Скроллим страницу для подгрузки всех карточек
+                    // Скроллим страницу для подгрузки всех карточек (более реалистично)
                     await this.autoScroll(page);
-                    await page.waitForTimeout(2000);
+                    
+                    // Добавляем случайную задержку после скролла
+                    const scrollDelay = Math.floor(Math.random() * 1500) + 1000; // 1-2.5 секунды
+                    await page.waitForTimeout(scrollDelay);
 
                     // Ищем объявления с основным селектором
                     let carLinks = [];
