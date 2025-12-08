@@ -98,7 +98,23 @@ class OpenSooqModule {
             // Инициализируем браузер
             const { startBrowser } = require('../../../utils/browser');
             this.browser = await startBrowser();
-            this.context = await this.browser.newContext();
+            
+            // Создаем контекст с настройками для обхода региональной блокировки
+            const contextOptions = {
+                locale: 'en-AE', // Локаль для ОАЭ
+                geolocation: { latitude: 25.2048, longitude: 55.2708 }, // Координаты Дубая
+                permissions: ['geolocation'],
+                viewport: { width: 1920, height: 1080 },
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                extraHTTPHeaders: {
+                    'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Referer': 'https://ae.opensooq.com/en',
+                    'Origin': 'https://ae.opensooq.com'
+                }
+            };
+            
+            this.context = await this.browser.newContext(contextOptions);
             
             // Инициализируем парсер с контекстом
             await this.parser.initialize(this.context);
@@ -110,6 +126,7 @@ class OpenSooqModule {
             return false;
         }
     }
+    
 
     /**
      * Очистка ресурсов модуля

@@ -2,6 +2,7 @@
  * Парсинг списка объявлений для OpenSooq.com
  */
 
+
 class OpenSooqListingParser {
     constructor(config) {
         this.config = config;
@@ -27,112 +28,420 @@ class OpenSooqListingParser {
     async* getListings(context) {
         let attempt = 0;
         let currentPage = 1;
+        const processedLinks = new Set(); // Отслеживаем уже обработанные ссылки
+        let emptyPagesCount = 0; // Счетчик пустых страниц подряд
+        const maxEmptyPages = 3; // Максимум пустых страниц подряд перед остановкой
+        // Статистика для логирования
+        const stats = {
+            startTime: Date.now(),
+            totalFound: 0,
+            totalUnique: 0,
+            totalDuplicates: 0,
+            totalPagesProcessed: 0,
+            totalErrors: 0,
+            lastProgressLog: 0,
+            stopReason: null
+        };
 
         while (attempt < this.config.maxRetries) {
-            const page = await context.newPage();
+            let page = await context.newPage();
+            let currentContext = context;
 
             try {
+                // Настройка заголовков для обхода региональной блокировки
+                await page.setExtraHTTPHeaders({
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                    "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Referer": "https://ae.opensooq.com/en",
+                    "Origin": "https://ae.opensooq.com",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "same-origin",
+                    "Sec-Fetch-User": "?1",
+                    "Cache-Control": "max-age=0"
+                });
+
+                // Устанавливаем viewport для имитации реального браузера
+                await page.setViewportSize({ width: 1920, height: 1080 });
+
+                if (attempt === 0 && currentPage === 1) {
+                    console.log("=".repeat(80));
+                    console.log(`🚀 НАЧАЛО ПАРСИНГА OPENSOOQ`);
+                    console.log(`📋 Конфигурация: maxEmptyPages=${maxEmptyPages}`);
+                    console.log(`⏰ Время начала: ${new Date().toLocaleString('ru-RU')}`);
+                    console.log("=".repeat(80));
+                }
+                
                 console.log("🔍 Открываем каталог OpenSooq...");
+
+                // Сначала заходим на главную страницу для установки cookies и обхода блокировки
+                try {
+                    console.log(`🌐 Заходим на главную страницу для установки cookies...`);
+                    await page.goto(this.config.baseUrl, { 
+                        waitUntil: "domcontentloaded", 
+                        timeout: 30000 
+                    });
+                    await page.waitForTimeout(2000);
+                    console.log(`✅ Главная страница загружена`);
+                } catch (mainPageError) {
+                    console.warn(`⚠️ Не удалось загрузить главную страницу: ${mainPageError.message}`);
+                }
 
                 while (true) {
                     const url = `${this.config.listingsUrl}?page=${currentPage}`;
-                    console.log(`📄 Загружаем страницу: ${url}`);
+                    const pageStartTime = Date.now();
+                    console.log(`📄 [${currentPage}] Загружаем страницу: ${url}`);
+                    
+                    // Логируем прогресс каждые 10 страниц
+                    if (currentPage % 10 === 0 || currentPage === 1) {
+                        const elapsed = Math.round((Date.now() - stats.startTime) / 1000);
+                        const pagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / elapsed).toFixed(2) : 0;
+                        const linksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / elapsed).toFixed(2) : 0;
+                        console.log("─".repeat(80));
+                        console.log(`📊 ПРОГРЕСС ПАРСИНГА OPENSOOQ (страница ${currentPage}):`);
+                        console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
+                        console.log(`   🔗 Найдено объявлений: ${stats.totalFound}`);
+                        console.log(`   ✅ Уникальных: ${stats.totalUnique}`);
+                        console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
+                        console.log(`   ⏱️  Время работы: ${elapsed}с (${pagesPerSec} стр/с, ${linksPerSec} объяв/с)`);
+                        console.log("─".repeat(80));
+                    }
 
-                    await page.goto(url, { 
-                        waitUntil: "domcontentloaded", 
-                        timeout: 60000 
-                    });
+                    try {
+                        await page.goto(url, { 
+                            waitUntil: "networkidle", 
+                            timeout: 60000 
+                        });
+                    } catch (navigationError) {
+                        stats.totalErrors++;
+                        const pageLoadTime = Date.now() - pageStartTime;
+                        console.warn(`⚠️ [${currentPage}] ОШИБКА загрузки страницы (${pageLoadTime}ms): ${navigationError.message}`);
+                        throw navigationError;
+                    }
 
                     // Ждем загрузки страницы
                     await page.waitForTimeout(3000);
+
+                    // Ждем появления хотя бы одной ссылки с классом postListItemData
+                    try {
+                        await page.waitForSelector('a.postListItemData', { timeout: 15000 });
+                        console.log(`✅ Найдены ссылки с классом postListItemData`);
+                    } catch (e) {
+                        console.warn(`⚠️ Ссылки с классом postListItemData не появились, продолжаем поиск...`);
+                    }
+
+                    // Дополнительное ожидание для загрузки динамического контента
+                    await page.waitForTimeout(2000);
 
                     // Скроллим страницу для подгрузки всех карточек
                     await this.autoScroll(page);
                     await page.waitForTimeout(2000);
 
-                    // Ищем объявления с основным селектором
+                    // Отладочная информация: проверяем, что есть на странице
+                    const debugInfo = await page.evaluate(() => {
+                        const info = {
+                            hasSerpMainContent: !!document.querySelector('#serpMainContent'),
+                            hasMain: !!document.querySelector('main'),
+                            postListItemDataCount: document.querySelectorAll('a.postListItemData').length,
+                            allLinksCount: document.querySelectorAll('a[href]').length,
+                            linksWithSearch: document.querySelectorAll('a[href*="/en/search/"]').length,
+                            pageTitle: document.title,
+                            bodyTextLength: document.body ? document.body.textContent.length : 0,
+                            htmlSnippet: document.body ? document.body.innerHTML.substring(0, 5000) : 'No body',
+                            isBlocked: document.title.includes('Access Restricted') || document.body.textContent.includes('Access Not Available')
+                        };
+                        return info;
+                    });
+                    console.log(`📊 Отладочная информация о странице:`, JSON.stringify(debugInfo, null, 2));
+                    
+                    // Если страница заблокирована, логируем и продолжаем
+                    if (debugInfo.isBlocked) {
+                        console.warn(`⚠️ Страница заблокирована по региону. Продолжаем работу без прокси...`);
+                    }
+                    
+                    // Логируем HTML содержимое #serpMainContent если он есть
+                    const serpMainContentHTML = await page.evaluate(() => {
+                        const container = document.querySelector('#serpMainContent');
+                        if (container) {
+                            return container.innerHTML.substring(0, 10000); // Первые 10000 символов
+                        }
+                        return null;
+                    });
+                    
+                    if (serpMainContentHTML) {
+                        console.log(`📄 HTML содержимое #serpMainContent (первые 10000 символов):`);
+                        console.log(serpMainContentHTML);
+                    } else {
+                        console.log(`⚠️ #serpMainContent не найден, логируем main...`);
+                        const mainHTML = await page.evaluate(() => {
+                            const main = document.querySelector('main');
+                            if (main) {
+                                return main.innerHTML.substring(0, 10000);
+                            }
+                            return null;
+                        });
+                        if (mainHTML) {
+                            console.log(`📄 HTML содержимое main (первые 10000 символов):`);
+                            console.log(mainHTML);
+                        }
+                    }
+
+                    // Ищем объявления с основным селектором и альтернативными
                     let carLinks = [];
                     
                     try {
-                        // Проверяем наличие контейнера с объявлениями
-                        const listingContainer = await page.$(this.containerSelector);
-                        if (listingContainer) {
-                            console.log(`✅ Найден контейнер #serpMainContent`);
+                        // Ищем все элементы с классом postListItemData на странице
+                        console.log(`🔍 Ищем все элементы с классом postListItemData...`);
+                        
+                        const searchResult = await page.evaluate((baseUrl) => {
+                            // Ищем все ссылки с классом postListItemData на всей странице
+                            const links = Array.from(document.querySelectorAll('a.postListItemData, a[class*="postListItemData"]'));
                             
-                            // Извлекаем ссылки из элементов списка
-                            carLinks = await page.$$eval(
-                                this.listingStemSelector,
-                                (anchors, baseUrl) => {
-                                    return anchors.map((a) => {
+                            const debugInfo = {
+                                foundLinks: links.length,
+                                sampleLinks: [],
+                                allLinksCount: 0,
+                                sampleAllLinks: []
+                            };
+                            
+                            // Логируем первые несколько ссылок для отладки
+                            if (links.length > 0) {
+                                debugInfo.sampleLinks = links.slice(0, 3).map((link, i) => ({
+                                    index: i + 1,
+                                    href: link.getAttribute('href'),
+                                    classes: link.className
+                                }));
+                            } else {
+                                // Если не нашли, проверяем, что вообще есть на странице
+                                const allLinks = Array.from(document.querySelectorAll('a[href]'));
+                                debugInfo.allLinksCount = allLinks.length;
+                                if (allLinks.length > 0) {
+                                    debugInfo.sampleAllLinks = allLinks.slice(0, 5).map((link, i) => ({
+                                        index: i + 1,
+                                        href: link.getAttribute('href'),
+                                        classes: link.className
+                                    }));
+                                }
+                            }
+                            
+                            const result = links
+                                .map(a => {
                                         const href = a.getAttribute('href');
+                                    if (!href) return null;
+                                    
                                         // Проверяем, полная ли это ссылка или относительная
-                                        if (href && href.startsWith('http')) {
+                                    if (href.startsWith('http')) {
                                             return href;
-                                        } else if (href) {
+                                    } else if (href.startsWith('/')) {
                                             // Конструируем полный URL из относительного пути
                                             return baseUrl + href;
-                                        }
-                                        return null;
-                                    }).filter(Boolean);
-                                },
-                                this.config.baseUrl
-                            );
+                                    } else {
+                                        return baseUrl + '/' + href;
+                                    }
+                                })
+                                .filter((href) => {
+                                    // Фильтруем ссылки на объявления (формат /en/search/ID)
+                                    if (!href) return false;
+                                    const isSearchLink = href.includes('/en/search/') && 
+                                                       /\/en\/search\/\d+/.test(href);
+                                    return isSearchLink;
+                                });
+                            
+                            return {
+                                links: result,
+                                debug: debugInfo
+                            };
+                        }, this.config.baseUrl);
+                        
+                        // Логируем отладочную информацию
+                        if (searchResult.debug) {
+                            console.log(`📊 Найдено ссылок с классом postListItemData: ${searchResult.debug.foundLinks}`);
+                            if (searchResult.debug.sampleLinks.length > 0) {
+                                console.log(`🔗 Примеры найденных ссылок:`);
+                                searchResult.debug.sampleLinks.forEach(item => {
+                                    console.log(`   ${item.index}. href: ${item.href}, classes: ${item.classes}`);
+                                });
+                            } else if (searchResult.debug.allLinksCount > 0) {
+                                console.log(`⚠️ Всего ссылок на странице: ${searchResult.debug.allLinksCount}`);
+                                console.log(`🔗 Примеры всех ссылок на странице:`);
+                                searchResult.debug.sampleAllLinks.forEach(item => {
+                                    console.log(`   ${item.index}. href: ${item.href}, classes: ${item.classes}`);
+                                });
+                            }
+                        }
+                        
+                        carLinks = searchResult.links || [];
+                        
+                        // Убираем дубликаты
+                        carLinks = [...new Set(carLinks)];
+                        
+                        if (carLinks.length > 0) {
+                            stats.totalFound += carLinks.length;
+                            console.log(`✅ [${currentPage}] Найдено ${carLinks.length} объявлений с классом postListItemData`);
+                        } else {
+                            // Альтернативный метод: ищем по атрибуту data-id или data-id1
+                            console.log(`🔍 Альтернативный поиск: ищем ссылки с data-id...`);
+                            carLinks = await page.evaluate((baseUrl) => {
+                                // Ищем ссылки с data-id или data-id1 (ID объявления) на всей странице
+                                const links = Array.from(document.querySelectorAll('a[data-id], a[data-id1]'));
+                                
+                                return links
+                                    .map(a => {
+                                        const href = a.getAttribute('href');
+                                        if (!href) return null;
+                                        
+                                        if (href.startsWith('http')) return href;
+                                        if (href.startsWith('/')) return baseUrl + href;
+                                        return baseUrl + '/' + href;
+                                    })
+                                    .filter(href => href && (
+                                        href.includes('/en/search/') ||
+                                        /\/en\/search\/\d+/.test(href)
+                                    ));
+                            }, this.config.baseUrl);
+                            
+                            carLinks = [...new Set(carLinks)];
                             
                             if (carLinks.length > 0) {
-                                console.log(`✅ Найдено ${carLinks.length} объявлений с основным селектором`);
+                                stats.totalFound += carLinks.length;
+                                console.log(`✅ [${currentPage}] Найдено ${carLinks.length} объявлений через data-id`);
                             }
-                        } else {
-                            console.warn(`⚠️ Контейнер #serpMainContent не найден`);
                         }
                     } catch (error) {
                         console.log("⚠️ Ошибка при поиске объявлений:", error.message);
+                        console.log("⚠️ Детали ошибки:", error.stack);
                     }
 
                     if (carLinks.length === 0) {
                         console.warn(`⚠️ На странице ${currentPage} не найдено объявлений`);
+                        emptyPagesCount++;
                         
                         // Проверяем, есть ли вообще контент на странице
                         const pageContent = await page.evaluate(() => document.body.textContent);
                         if (pageContent.length < 1000) {
                             console.warn(`⚠️ Страница ${currentPage} выглядит пустой, возможно сайт недоступен`);
+                            if (emptyPagesCount >= maxEmptyPages) {
+                                stats.stopReason = `Подряд ${maxEmptyPages} пустых страниц`;
+                                console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
                             break;
+                            }
                         }
                         
                         // Если страница не пустая, но объявления не найдены, попробуем следующую страницу
-                        console.log(`🔄 Переходим к странице ${currentPage + 1}...`);
+                        if (emptyPagesCount < maxEmptyPages) {
+                        console.log(`🔄 [${currentPage}] Переходим к следующей странице (пустых подряд: ${emptyPagesCount}/${maxEmptyPages})`);
+                            currentPage++;
+                            continue;
+                        } else {
+                            console.log(`🏁 Подряд ${maxEmptyPages} пустых страниц. Завершаем парсинг.`);
+                            break;
+                        }
+                    }
+
+                    // Сбрасываем счетчик пустых страниц, если нашли объявления
+                    emptyPagesCount = 0;
+
+                    // Фильтруем дубликаты
+                    const newLinks = carLinks.filter(link => !processedLinks.has(link));
+                    const duplicatesCount = carLinks.length - newLinks.length;
+                    
+                    // Обновляем статистику
+                    stats.totalDuplicates += duplicatesCount;
+                    stats.totalUnique += newLinks.length;
+                    stats.totalPagesProcessed++;
+
+                    if (duplicatesCount > 0) {
+                        console.log(`🔄 [${currentPage}] Найдено ${duplicatesCount} дубликатов (новых: ${newLinks.length}, всего на странице: ${carLinks.length})`);
+                    }
+
+                    if (newLinks.length === 0) {
+                        console.log(`⚠️ [${currentPage}] Все объявления уже обработаны (найдено: ${carLinks.length}, дубликатов: ${duplicatesCount})`);
+                        emptyPagesCount++;
+                        if (emptyPagesCount >= maxEmptyPages) {
+                            stats.stopReason = `Подряд ${maxEmptyPages} страниц без новых объявлений`;
+                            console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
+                            break;
+                        }
                         currentPage++;
                         continue;
                     }
 
-                    console.log(`✅ Найдено ${carLinks.length} объявлений на странице ${currentPage}`);
+                    const pageProcessTime = Date.now() - pageStartTime;
+                    console.log(`✅ [${currentPage}] Найдено ${newLinks.length} новых объявлений (всего: ${carLinks.length}, дубликатов: ${duplicatesCount}, время: ${pageProcessTime}ms)`);
+                    console.log(`   📈 Общая статистика: уникальных=${stats.totalUnique}, дубликатов=${stats.totalDuplicates}, найдено=${stats.totalFound}`);
                     
                     // Логируем первые несколько ссылок для отладки
-                    if (carLinks.length > 0) {
-                        console.log(`🔗 Первые 3 ссылки на странице ${currentPage}:`);
-                        carLinks.slice(0, 3).forEach((link, index) => {
+                    if (newLinks.length > 0) {
+                        console.log(`🔗 Первые 3 новые ссылки на странице ${currentPage}:`);
+                        newLinks.slice(0, 3).forEach((link, index) => {
                             console.log(`   ${index + 1}. ${link}`);
                         });
                     }
 
-                    for (const link of carLinks) {
+                    // Добавляем ссылки в множество обработанных и возвращаем их
+                    for (const link of newLinks) {
+                        processedLinks.add(link);
                         yield link;
                     }
+                    
                     currentPage++;
                 }
 
+                // Финальная статистика
+                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
+                const avgPagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / totalTime).toFixed(2) : 0;
+                const avgLinksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / totalTime).toFixed(2) : 0;
+                
+                console.log("=".repeat(80));
+                console.log(`🏁 ЗАВЕРШЕНИЕ ПАРСИНГА OPENSOOQ`);
+                console.log(`⏰ Время завершения: ${new Date().toLocaleString('ru-RU')}`);
+                console.log(`⏱️  Общее время работы: ${totalTime}с (${Math.floor(totalTime / 60)}м ${totalTime % 60}с)`);
+                console.log(`📊 ФИНАЛЬНАЯ СТАТИСТИКА:`);
+                console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
+                console.log(`   🔗 Всего найдено объявлений: ${stats.totalFound}`);
+                console.log(`   ✅ Уникальных объявлений: ${stats.totalUnique}`);
+                console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
+                console.log(`   ⚠️  Ошибок: ${stats.totalErrors}`);
+                console.log(`   📈 Производительность: ${avgPagesPerSec} стр/с, ${avgLinksPerSec} объяв/с`);
+                console.log(`   🛑 Причина остановки: ${stats.stopReason || 'Успешное завершение'}`);
+                console.log(`   📍 Последняя страница: ${currentPage - 1}`);
+                console.log("=".repeat(80));
+                
                 break; // Успешно завершили парсинг
             } catch (error) {
-                console.error(`❌ Ошибка при парсинге страницы ${currentPage}:`, error);
+                stats.totalErrors++;
+                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
+                console.error("=".repeat(80));
+                console.error(`❌ КРИТИЧЕСКАЯ ОШИБКА при парсинге страницы ${currentPage}`);
+                console.error(`   Ошибка: ${error.name} - ${error.message}`);
+                console.error(`   Время работы до ошибки: ${totalTime}с`);
+                console.error(`   Обработано страниц: ${stats.totalPagesProcessed}`);
+                console.error(`   Найдено объявлений: ${stats.totalUnique}`);
+                console.error(`   Попытка: ${attempt + 1}/${this.config.maxRetries}`);
+                if (error.stack) {
+                    console.error(`   Стек: ${error.stack.split('\n').slice(0, 3).join('\n   ')}`);
+                }
+                console.error("=".repeat(80));
                 attempt++;
                 
                 if (attempt >= this.config.maxRetries) {
+                    stats.stopReason = `Достигнут лимит повторных попыток (${this.config.maxRetries})`;
+                    console.error(`❌ ОСТАНОВКА: ${stats.stopReason}`);
                     throw error;
                 }
                 
-                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries}...`);
-                await this.sleep(this.config.retryDelay);
+                console.log(`🔄 Повторная попытка ${attempt}/${this.config.maxRetries} через ${this.config.retryDelay || 5000}ms...`);
+                await this.sleep(this.config.retryDelay || 5000);
             } finally {
+                try {
                 await page.close();
+                } catch (e) {
+                    // Игнорируем ошибки закрытия
+                }
             }
         }
     }

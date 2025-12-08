@@ -4,6 +4,8 @@
   "listingsUrl": "https://www.dubicars.com/dubai/used?page={page}",
   "timeout": 60000,
   "delayBetweenRequests": 1000,
+  "maxRetries": 3,
+  "retryDelay": 5000,
   "enableImageLoading": false,
   "selectors": {
     "listings": {
