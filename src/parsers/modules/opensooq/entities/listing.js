@@ -1,3 +1,5 @@
+const { telegramService } = require('../../../../services/TelegramService');
+
 /**
  * Парсинг списка объявлений для OpenSooq.com
  */
@@ -32,7 +34,7 @@ class OpenSooqListingParser {
         let emptyPagesCount = 0; // Счетчик пустых страниц подряд
         const maxEmptyPages = 3; // Максимум пустых страниц подряд перед остановкой
         // Статистика для логирования
-        const stats = {
+        this.stats = {
             startTime: Date.now(),
             totalFound: 0,
             totalUnique: 0,
@@ -42,6 +44,14 @@ class OpenSooqListingParser {
             lastProgressLog: 0,
             stopReason: null
         };
+
+        // Интервал для отправки уведомлений в Telegram (каждые N страниц)
+        this.telegramNotificationInterval = this.config.telegramNotificationInterval || 10;
+
+        // Отправляем уведомление о старте парсинга списка
+        if (telegramService.getStatus().enabled) {
+            await this.sendProgressNotification('start', 1, 0);
+        }
 
         while (attempt < this.config.maxRetries) {
             let page = await context.newPage();
@@ -98,17 +108,22 @@ class OpenSooqListingParser {
                     
                     // Логируем прогресс каждые 10 страниц
                     if (currentPage % 10 === 0 || currentPage === 1) {
-                        const elapsed = Math.round((Date.now() - stats.startTime) / 1000);
-                        const pagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / elapsed).toFixed(2) : 0;
-                        const linksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / elapsed).toFixed(2) : 0;
+                        const elapsed = Math.round((Date.now() - this.stats.startTime) / 1000);
+                        const pagesPerSec = this.stats.totalPagesProcessed > 0 ? (this.stats.totalPagesProcessed / elapsed).toFixed(2) : 0;
+                        const linksPerSec = this.stats.totalUnique > 0 ? (this.stats.totalUnique / elapsed).toFixed(2) : 0;
                         console.log("─".repeat(80));
                         console.log(`📊 ПРОГРЕСС ПАРСИНГА OPENSOOQ (страница ${currentPage}):`);
-                        console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
-                        console.log(`   🔗 Найдено объявлений: ${stats.totalFound}`);
-                        console.log(`   ✅ Уникальных: ${stats.totalUnique}`);
-                        console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
+                        console.log(`   📄 Обработано страниц: ${this.stats.totalPagesProcessed}`);
+                        console.log(`   🔗 Найдено объявлений: ${this.stats.totalFound}`);
+                        console.log(`   ✅ Уникальных: ${this.stats.totalUnique}`);
+                        console.log(`   🔄 Дубликатов: ${this.stats.totalDuplicates}`);
                         console.log(`   ⏱️  Время работы: ${elapsed}с (${pagesPerSec} стр/с, ${linksPerSec} объяв/с)`);
                         console.log("─".repeat(80));
+                    }
+
+                    // Отправляем уведомление в Telegram каждые N страниц
+                    if (telegramService.getStatus().enabled && currentPage % this.telegramNotificationInterval === 0) {
+                        await this.sendProgressNotification('progress', currentPage, this.stats.totalUnique);
                     }
 
                     try {
@@ -117,25 +132,31 @@ class OpenSooqListingParser {
                             timeout: 60000 
                         });
                     } catch (navigationError) {
-                        stats.totalErrors++;
+                        this.stats.totalErrors++;
                         const pageLoadTime = Date.now() - pageStartTime;
                         console.warn(`⚠️ [${currentPage}] ОШИБКА загрузки страницы (${pageLoadTime}ms): ${navigationError.message}`);
+                        
+                        // Отправляем уведомление об ошибке в Telegram
+                        if (telegramService.getStatus().enabled) {
+                            await this.sendErrorNotification(currentPage, navigationError, url);
+                        }
+                        
                         throw navigationError;
                     }
 
                     // Ждем загрузки страницы
                     await page.waitForTimeout(3000);
 
-                    // Ждем появления хотя бы одной ссылки с классом postListItemData
+                    // Ждем появления хотя бы одной ссылки с классом postListItemData или data-id1
                     try {
-                        await page.waitForSelector('a.postListItemData', { timeout: 15000 });
-                        console.log(`✅ Найдены ссылки с классом postListItemData`);
+                        await page.waitForSelector('a.postListItemData, a[data-id1]', { timeout: 20000 });
+                        console.log(`✅ Найдены ссылки с классом postListItemData или data-id1`);
                     } catch (e) {
                         console.warn(`⚠️ Ссылки с классом postListItemData не появились, продолжаем поиск...`);
                     }
 
                     // Дополнительное ожидание для загрузки динамического контента
-                    await page.waitForTimeout(2000);
+                    await page.waitForTimeout(3000);
 
                     // Скроллим страницу для подгрузки всех карточек
                     await this.autoScroll(page);
@@ -198,58 +219,72 @@ class OpenSooqListingParser {
                         console.log(`🔍 Ищем все элементы с классом postListItemData...`);
                         
                         const searchResult = await page.evaluate((baseUrl) => {
-                            // Ищем все ссылки с классом postListItemData на всей странице
-                            const links = Array.from(document.querySelectorAll('a.postListItemData, a[class*="postListItemData"]'));
+                            // Ищем все ссылки с классом postListItemData или атрибутом data-id1
+                            const links = Array.from(document.querySelectorAll('a.postListItemData, a[class*="postListItemData"], a[data-id1]'));
                             
                             const debugInfo = {
                                 foundLinks: links.length,
                                 sampleLinks: [],
                                 allLinksCount: 0,
-                                sampleAllLinks: []
+                                sampleAllLinks: [],
+                                linksWithSearch: 0
                             };
                             
                             // Логируем первые несколько ссылок для отладки
                             if (links.length > 0) {
-                                debugInfo.sampleLinks = links.slice(0, 3).map((link, i) => ({
+                                debugInfo.sampleLinks = links.slice(0, 5).map((link, i) => ({
                                     index: i + 1,
                                     href: link.getAttribute('href'),
-                                    classes: link.className
+                                    classes: link.className,
+                                    dataId1: link.getAttribute('data-id1')
                                 }));
                             } else {
                                 // Если не нашли, проверяем, что вообще есть на странице
                                 const allLinks = Array.from(document.querySelectorAll('a[href]'));
                                 debugInfo.allLinksCount = allLinks.length;
+                                
+                                // Проверяем ссылки с /en/search/
+                                const searchLinks = allLinks.filter(link => {
+                                    const href = link.getAttribute('href');
+                                    return href && href.includes('/en/search/');
+                                });
+                                debugInfo.linksWithSearch = searchLinks.length;
+                                
                                 if (allLinks.length > 0) {
-                                    debugInfo.sampleAllLinks = allLinks.slice(0, 5).map((link, i) => ({
+                                    debugInfo.sampleAllLinks = allLinks.slice(0, 10).map((link, i) => ({
                                         index: i + 1,
                                         href: link.getAttribute('href'),
-                                        classes: link.className
+                                        classes: link.className,
+                                        hasPostListItemData: link.className.includes('postListItemData'),
+                                        dataId1: link.getAttribute('data-id1')
                                     }));
                                 }
                             }
                             
                             const result = links
                                 .map(a => {
-                                        const href = a.getAttribute('href');
+                                    const href = a.getAttribute('href');
                                     if (!href) return null;
                                     
-                                        // Проверяем, полная ли это ссылка или относительная
+                                    // Проверяем, полная ли это ссылка или относительная
+                                    let fullUrl;
                                     if (href.startsWith('http')) {
-                                            return href;
+                                        fullUrl = href;
                                     } else if (href.startsWith('/')) {
-                                            // Конструируем полный URL из относительного пути
-                                            return baseUrl + href;
+                                        // Конструируем полный URL из относительного пути
+                                        fullUrl = baseUrl + href;
                                     } else {
-                                        return baseUrl + '/' + href;
+                                        fullUrl = baseUrl + '/' + href;
                                     }
+                                    
+                                    // Проверяем, что это ссылка на объявление (формат /en/search/ID)
+                                    if (fullUrl.includes('/en/search/') && /\/en\/search\/\d+/.test(fullUrl)) {
+                                        return fullUrl;
+                                    }
+                                    
+                                    return null;
                                 })
-                                .filter((href) => {
-                                    // Фильтруем ссылки на объявления (формат /en/search/ID)
-                                    if (!href) return false;
-                                    const isSearchLink = href.includes('/en/search/') && 
-                                                       /\/en\/search\/\d+/.test(href);
-                                    return isSearchLink;
-                                });
+                                .filter(href => href !== null);
                             
                             return {
                                 links: result,
@@ -260,16 +295,19 @@ class OpenSooqListingParser {
                         // Логируем отладочную информацию
                         if (searchResult.debug) {
                             console.log(`📊 Найдено ссылок с классом postListItemData: ${searchResult.debug.foundLinks}`);
+                            if (searchResult.debug.linksWithSearch > 0) {
+                                console.log(`📊 Найдено ссылок с /en/search/: ${searchResult.debug.linksWithSearch}`);
+                            }
                             if (searchResult.debug.sampleLinks.length > 0) {
                                 console.log(`🔗 Примеры найденных ссылок:`);
                                 searchResult.debug.sampleLinks.forEach(item => {
-                                    console.log(`   ${item.index}. href: ${item.href}, classes: ${item.classes}`);
+                                    console.log(`   ${item.index}. href: ${item.href}, classes: ${item.classes}, data-id1: ${item.dataId1}`);
                                 });
                             } else if (searchResult.debug.allLinksCount > 0) {
                                 console.log(`⚠️ Всего ссылок на странице: ${searchResult.debug.allLinksCount}`);
                                 console.log(`🔗 Примеры всех ссылок на странице:`);
                                 searchResult.debug.sampleAllLinks.forEach(item => {
-                                    console.log(`   ${item.index}. href: ${item.href}, classes: ${item.classes}`);
+                                    console.log(`   ${item.index}. href: ${item.href}, hasPostListItemData: ${item.hasPostListItemData}, data-id1: ${item.dataId1}`);
                                 });
                             }
                         }
@@ -280,35 +318,35 @@ class OpenSooqListingParser {
                         carLinks = [...new Set(carLinks)];
                         
                         if (carLinks.length > 0) {
-                            stats.totalFound += carLinks.length;
+                            this.stats.totalFound += carLinks.length;
                             console.log(`✅ [${currentPage}] Найдено ${carLinks.length} объявлений с классом postListItemData`);
                         } else {
-                            // Альтернативный метод: ищем по атрибуту data-id или data-id1
-                            console.log(`🔍 Альтернативный поиск: ищем ссылки с data-id...`);
+                            // Альтернативный метод: ищем все ссылки с /en/search/ в href
+                            console.log(`🔍 Альтернативный поиск: ищем все ссылки с /en/search/...`);
                             carLinks = await page.evaluate((baseUrl) => {
-                                // Ищем ссылки с data-id или data-id1 (ID объявления) на всей странице
-                                const links = Array.from(document.querySelectorAll('a[data-id], a[data-id1]'));
+                                // Ищем все ссылки, содержащие /en/search/ в href
+                                const allLinks = Array.from(document.querySelectorAll('a[href*="/en/search/"]'));
                                 
-                                return links
+                                return allLinks
                                     .map(a => {
                                         const href = a.getAttribute('href');
                                         if (!href) return null;
+                                        
+                                        // Проверяем, что это ссылка на объявление (содержит /en/search/ и ID)
+                                        if (!/\/en\/search\/\d+/.test(href)) return null;
                                         
                                         if (href.startsWith('http')) return href;
                                         if (href.startsWith('/')) return baseUrl + href;
                                         return baseUrl + '/' + href;
                                     })
-                                    .filter(href => href && (
-                                        href.includes('/en/search/') ||
-                                        /\/en\/search\/\d+/.test(href)
-                                    ));
+                                    .filter(href => href !== null);
                             }, this.config.baseUrl);
                             
                             carLinks = [...new Set(carLinks)];
                             
                             if (carLinks.length > 0) {
-                                stats.totalFound += carLinks.length;
-                                console.log(`✅ [${currentPage}] Найдено ${carLinks.length} объявлений через data-id`);
+                                this.stats.totalFound += carLinks.length;
+                                console.log(`✅ [${currentPage}] Найдено ${carLinks.length} объявлений через альтернативный поиск`);
                             }
                         }
                     } catch (error) {
@@ -325,8 +363,12 @@ class OpenSooqListingParser {
                         if (pageContent.length < 1000) {
                             console.warn(`⚠️ Страница ${currentPage} выглядит пустой, возможно сайт недоступен`);
                             if (emptyPagesCount >= maxEmptyPages) {
-                                stats.stopReason = `Подряд ${maxEmptyPages} пустых страниц`;
-                                console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
+                                this.stats.stopReason = `Подряд ${maxEmptyPages} пустых страниц`;
+                                console.log(`🏁 ОСТАНОВКА: ${this.stats.stopReason}`);
+                                
+                                if (telegramService.getStatus().enabled) {
+                                    await this.sendProgressNotification('end', currentPage, this.stats.totalUnique);
+                                }
                             break;
                             }
                         }
@@ -350,9 +392,9 @@ class OpenSooqListingParser {
                     const duplicatesCount = carLinks.length - newLinks.length;
                     
                     // Обновляем статистику
-                    stats.totalDuplicates += duplicatesCount;
-                    stats.totalUnique += newLinks.length;
-                    stats.totalPagesProcessed++;
+                    this.stats.totalDuplicates += duplicatesCount;
+                    this.stats.totalUnique += newLinks.length;
+                    this.stats.totalPagesProcessed++;
 
                     if (duplicatesCount > 0) {
                         console.log(`🔄 [${currentPage}] Найдено ${duplicatesCount} дубликатов (новых: ${newLinks.length}, всего на странице: ${carLinks.length})`);
@@ -362,8 +404,12 @@ class OpenSooqListingParser {
                         console.log(`⚠️ [${currentPage}] Все объявления уже обработаны (найдено: ${carLinks.length}, дубликатов: ${duplicatesCount})`);
                         emptyPagesCount++;
                         if (emptyPagesCount >= maxEmptyPages) {
-                            stats.stopReason = `Подряд ${maxEmptyPages} страниц без новых объявлений`;
-                            console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
+                            this.stats.stopReason = `Подряд ${maxEmptyPages} страниц без новых объявлений`;
+                            console.log(`🏁 ОСТАНОВКА: ${this.stats.stopReason}`);
+                            
+                            if (telegramService.getStatus().enabled) {
+                                await this.sendProgressNotification('end', currentPage, this.stats.totalUnique);
+                            }
                             break;
                         }
                         currentPage++;
@@ -372,7 +418,7 @@ class OpenSooqListingParser {
 
                     const pageProcessTime = Date.now() - pageStartTime;
                     console.log(`✅ [${currentPage}] Найдено ${newLinks.length} новых объявлений (всего: ${carLinks.length}, дубликатов: ${duplicatesCount}, время: ${pageProcessTime}ms)`);
-                    console.log(`   📈 Общая статистика: уникальных=${stats.totalUnique}, дубликатов=${stats.totalDuplicates}, найдено=${stats.totalFound}`);
+                    console.log(`   📈 Общая статистика: уникальных=${this.stats.totalUnique}, дубликатов=${this.stats.totalDuplicates}, найдено=${this.stats.totalFound}`);
                     
                     // Логируем первые несколько ссылок для отладки
                     if (newLinks.length > 0) {
@@ -392,45 +438,55 @@ class OpenSooqListingParser {
                 }
 
                 // Финальная статистика
-                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
-                const avgPagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / totalTime).toFixed(2) : 0;
-                const avgLinksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / totalTime).toFixed(2) : 0;
+                const totalTime = Math.round((Date.now() - this.stats.startTime) / 1000);
+                const avgPagesPerSec = this.stats.totalPagesProcessed > 0 ? (this.stats.totalPagesProcessed / totalTime).toFixed(2) : 0;
+                const avgLinksPerSec = this.stats.totalUnique > 0 ? (this.stats.totalUnique / totalTime).toFixed(2) : 0;
                 
                 console.log("=".repeat(80));
                 console.log(`🏁 ЗАВЕРШЕНИЕ ПАРСИНГА OPENSOOQ`);
                 console.log(`⏰ Время завершения: ${new Date().toLocaleString('ru-RU')}`);
                 console.log(`⏱️  Общее время работы: ${totalTime}с (${Math.floor(totalTime / 60)}м ${totalTime % 60}с)`);
                 console.log(`📊 ФИНАЛЬНАЯ СТАТИСТИКА:`);
-                console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
-                console.log(`   🔗 Всего найдено объявлений: ${stats.totalFound}`);
-                console.log(`   ✅ Уникальных объявлений: ${stats.totalUnique}`);
-                console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
-                console.log(`   ⚠️  Ошибок: ${stats.totalErrors}`);
+                console.log(`   📄 Обработано страниц: ${this.stats.totalPagesProcessed}`);
+                console.log(`   🔗 Всего найдено объявлений: ${this.stats.totalFound}`);
+                console.log(`   ✅ Уникальных объявлений: ${this.stats.totalUnique}`);
+                console.log(`   🔄 Дубликатов: ${this.stats.totalDuplicates}`);
+                console.log(`   ⚠️  Ошибок: ${this.stats.totalErrors}`);
                 console.log(`   📈 Производительность: ${avgPagesPerSec} стр/с, ${avgLinksPerSec} объяв/с`);
-                console.log(`   🛑 Причина остановки: ${stats.stopReason || 'Успешное завершение'}`);
+                console.log(`   🛑 Причина остановки: ${this.stats.stopReason || 'Успешное завершение'}`);
                 console.log(`   📍 Последняя страница: ${currentPage - 1}`);
                 console.log("=".repeat(80));
+
+                if (telegramService.getStatus().enabled) {
+                    await this.sendProgressNotification('end', currentPage - 1, this.stats.totalUnique);
+                }
                 
                 break; // Успешно завершили парсинг
             } catch (error) {
-                stats.totalErrors++;
-                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
+                this.stats.totalErrors++;
+                const totalTime = Math.round((Date.now() - this.stats.startTime) / 1000);
                 console.error("=".repeat(80));
                 console.error(`❌ КРИТИЧЕСКАЯ ОШИБКА при парсинге страницы ${currentPage}`);
                 console.error(`   Ошибка: ${error.name} - ${error.message}`);
                 console.error(`   Время работы до ошибки: ${totalTime}с`);
-                console.error(`   Обработано страниц: ${stats.totalPagesProcessed}`);
-                console.error(`   Найдено объявлений: ${stats.totalUnique}`);
+                console.error(`   Обработано страниц: ${this.stats.totalPagesProcessed}`);
+                console.error(`   Найдено объявлений: ${this.stats.totalUnique}`);
                 console.error(`   Попытка: ${attempt + 1}/${this.config.maxRetries}`);
                 if (error.stack) {
                     console.error(`   Стек: ${error.stack.split('\n').slice(0, 3).join('\n   ')}`);
                 }
                 console.error("=".repeat(80));
+                
+                // Отправляем уведомление о критической ошибке
+                if (telegramService.getStatus().enabled) {
+                    await this.sendErrorNotification(currentPage, error, 'unknown', attempt + 1 >= this.config.maxRetries);
+                }
+                
                 attempt++;
                 
                 if (attempt >= this.config.maxRetries) {
-                    stats.stopReason = `Достигнут лимит повторных попыток (${this.config.maxRetries})`;
-                    console.error(`❌ ОСТАНОВКА: ${stats.stopReason}`);
+                    this.stats.stopReason = `Достигнут лимит повторных попыток (${this.config.maxRetries})`;
+                    console.error(`❌ ОСТАНОВКА: ${this.stats.stopReason}`);
                     throw error;
                 }
                 
@@ -480,6 +536,69 @@ class OpenSooqListingParser {
                 }, 400);
             });
         }, this.scrollContainers);
+    }
+
+    /**
+     * Отправка уведомления о прогрессе в Telegram
+     */
+    async sendProgressNotification(type, page, listingsCount) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const duration = this.stats.startTime 
+                ? Math.round((Date.now() - this.stats.startTime) / 1000 / 60) 
+                : 0;
+
+            let message = '';
+            
+            if (type === 'start') {
+                message = `🚀 *OpenSooq: Начало парсинга*\n\n` +
+                         `Страница: ${page}\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            } else if (type === 'progress') {
+                message = `📊 *OpenSooq: Прогресс парсинга*\n\n` +
+                         `Страниц обработано: ${page}\n` +
+                         `Объявлений найдено: ${listingsCount}\n` +
+                         `Ошибок: ${this.stats.totalErrors}\n` +
+                         `Время работы: ${duration} мин\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            } else if (type === 'end') {
+                message = `✅ *OpenSooq: Парсинг завершен*\n\n` +
+                         `Всего страниц: ${page}\n` +
+                         `Всего объявлений: ${listingsCount}\n` +
+                         `Ошибок: ${this.stats.totalErrors}\n` +
+                         `Время работы: ${duration} мин\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            }
+
+            if (message) {
+                await telegramService.sendMessage(message);
+            }
+        } catch (error) {
+            console.warn(`⚠️ Ошибка отправки уведомления в Telegram:`, error.message);
+        }
+    }
+
+    /**
+     * Отправка уведомления об ошибке в Telegram
+     */
+    async sendErrorNotification(page, error, url = 'unknown', isCritical = false) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const emoji = isCritical ? '🚨' : '⚠️';
+            const message = `${emoji} *OpenSooq: Ошибка парсинга*\n\n` +
+                          `Страница: ${page}\n` +
+                          `Ошибка: ${error.name || 'Unknown'}\n` +
+                          `Сообщение: ${error.message}\n` +
+                          (url !== 'unknown' ? `URL: ${url}\n` : '') +
+                          `Всего ошибок: ${this.stats.totalErrors}\n` +
+                          `Время: ${new Date().toLocaleString('ru-RU')}`;
+
+            await telegramService.sendMessage(message);
+        } catch (telegramError) {
+            console.warn(`⚠️ Ошибка отправки уведомления об ошибке:`, telegramError.message);
+        }
     }
 
     /**

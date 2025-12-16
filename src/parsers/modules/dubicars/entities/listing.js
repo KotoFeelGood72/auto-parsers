@@ -1,3 +1,5 @@
+const { telegramService } = require('../../../../services/TelegramService');
+
 /**
  * Парсинг списка объявлений для Dubicars.com
  */
@@ -71,7 +73,7 @@ class DubicarsListingParser {
         const maxEmptyPages = 3; // Максимум пустых страниц подряд перед остановкой
         
         // Статистика для логирования
-        const stats = {
+        this.stats = {
             startTime: Date.now(),
             totalFound: 0,
             totalUnique: 0,
@@ -81,6 +83,14 @@ class DubicarsListingParser {
             lastProgressLog: 0,
             stopReason: null
         };
+
+        // Интервал для отправки уведомлений в Telegram (каждые N страниц)
+        this.telegramNotificationInterval = this.config.telegramNotificationInterval || 10;
+
+        // Отправляем уведомление о старте парсинга списка
+        if (telegramService.getStatus().enabled) {
+            await this.sendProgressNotification('start', 1, 0);
+        }
 
         while (attempt < this.config.maxRetries) {
             const page = await this.createPage(context);
@@ -99,17 +109,22 @@ class DubicarsListingParser {
                     
                     // Логируем прогресс каждые 10 страниц
                     if (currentPage % 10 === 0 || currentPage === 1) {
-                        const elapsed = Math.round((Date.now() - stats.startTime) / 1000);
-                        const pagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / elapsed).toFixed(2) : 0;
-                        const linksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / elapsed).toFixed(2) : 0;
+                        const elapsed = Math.round((Date.now() - this.stats.startTime) / 1000);
+                        const pagesPerSec = this.stats.totalPagesProcessed > 0 ? (this.stats.totalPagesProcessed / elapsed).toFixed(2) : 0;
+                        const linksPerSec = this.stats.totalUnique > 0 ? (this.stats.totalUnique / elapsed).toFixed(2) : 0;
                         console.log("─".repeat(80));
                         console.log(`📊 ПРОГРЕСС ПАРСИНГА (страница ${currentPage}):`);
-                        console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
-                        console.log(`   🔗 Найдено объявлений: ${stats.totalFound}`);
-                        console.log(`   ✅ Уникальных: ${stats.totalUnique}`);
-                        console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
+                        console.log(`   📄 Обработано страниц: ${this.stats.totalPagesProcessed}`);
+                        console.log(`   🔗 Найдено объявлений: ${this.stats.totalFound}`);
+                        console.log(`   ✅ Уникальных: ${this.stats.totalUnique}`);
+                        console.log(`   🔄 Дубликатов: ${this.stats.totalDuplicates}`);
                         console.log(`   ⏱️  Время работы: ${elapsed}с (${pagesPerSec} стр/с, ${linksPerSec} объяв/с)`);
                         console.log("─".repeat(80));
+                    }
+
+                    // Отправляем уведомление в Telegram каждые N страниц
+                    if (telegramService.getStatus().enabled && currentPage % this.telegramNotificationInterval === 0) {
+                        await this.sendProgressNotification('progress', currentPage, this.stats.totalUnique);
                     }
 
                     try {
@@ -118,8 +133,13 @@ class DubicarsListingParser {
                             timeout: timeout 
                         });
                     } catch (navigationError) {
-                        stats.totalErrors++;
+                        this.stats.totalErrors++;
                         const pageLoadTime = Date.now() - pageStartTime;
+                        
+                        // Отправляем уведомление об ошибке в Telegram
+                        if (telegramService.getStatus().enabled) {
+                            await this.sendErrorNotification(currentPage, navigationError, url);
+                        }
                         // Обработка ошибок загрузки страницы
                         if (navigationError.name === 'TimeoutError') {
                             console.warn(`⏱️ [${currentPage}] ТАЙМАУТ загрузки (${pageLoadTime}ms/${timeout}ms), пропускаем...`);
@@ -144,7 +164,7 @@ class DubicarsListingParser {
                         continue;
                     }
                     
-                    stats.totalPagesProcessed++;
+                    this.stats.totalPagesProcessed++;
                     const pageLoadTime = Date.now() - pageStartTime;
                     if (pageLoadTime > 5000) {
                         console.log(`⏱️ [${currentPage}] Страница загружена за ${pageLoadTime}ms (медленно)`);
@@ -261,7 +281,7 @@ class DubicarsListingParser {
                         const pageProcessTime = Date.now() - pageStartTime;
                         console.warn(`⚠️ [${currentPage}] ПУСТАЯ СТРАНИЦА: не найдено объявлений (время загрузки: ${pageProcessTime}ms)`);
                         emptyPagesCount++;
-                        stats.totalPagesProcessed++;
+                        this.stats.totalPagesProcessed++;
                         
                         // Проверяем наличие пагинации или следующей страницы
                         const hasNextPage = await page.evaluate(() => {
@@ -281,8 +301,12 @@ class DubicarsListingParser {
                         });
                         
                         if (!hasNextPage && emptyPagesCount >= maxEmptyPages) {
-                            stats.stopReason = `Нет следующей страницы и подряд ${maxEmptyPages} пустых страниц`;
-                            console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
+                            this.stats.stopReason = `Нет следующей страницы и подряд ${maxEmptyPages} пустых страниц`;
+                            console.log(`🏁 ОСТАНОВКА: ${this.stats.stopReason}`);
+                            
+                            if (telegramService.getStatus().enabled) {
+                                await this.sendProgressNotification('end', currentPage, this.stats.totalUnique);
+                            }
                             break;
                         }
                         
@@ -300,16 +324,16 @@ class DubicarsListingParser {
 
                     // Сбрасываем счетчик пустых страниц, если нашли объявления
                     emptyPagesCount = 0;
-                    stats.totalPagesProcessed++;
+                    this.stats.totalPagesProcessed++;
 
                     // Фильтруем дубликаты
                     const newLinks = carLinks.filter(link => !processedLinks.has(link));
                     const duplicatesCount = carLinks.length - newLinks.length;
                     
                     // Обновляем статистику
-                    stats.totalFound += carLinks.length;
-                    stats.totalDuplicates += duplicatesCount;
-                    stats.totalUnique += newLinks.length;
+                    this.stats.totalFound += carLinks.length;
+                    this.stats.totalDuplicates += duplicatesCount;
+                    this.stats.totalUnique += newLinks.length;
 
                     if (duplicatesCount > 0) {
                         console.log(`🔄 [${currentPage}] Найдено ${duplicatesCount} дубликатов (новых: ${newLinks.length}, всего на странице: ${carLinks.length})`);
@@ -319,8 +343,12 @@ class DubicarsListingParser {
                         console.log(`⚠️ [${currentPage}] Все объявления уже обработаны (найдено: ${carLinks.length}, дубликатов: ${duplicatesCount})`);
                         emptyPagesCount++;
                         if (emptyPagesCount >= maxEmptyPages) {
-                            stats.stopReason = `Подряд ${maxEmptyPages} страниц без новых объявлений`;
-                            console.log(`🏁 ОСТАНОВКА: ${stats.stopReason}`);
+                            this.stats.stopReason = `Подряд ${maxEmptyPages} страниц без новых объявлений`;
+                            console.log(`🏁 ОСТАНОВКА: ${this.stats.stopReason}`);
+                            
+                            if (telegramService.getStatus().enabled) {
+                                await this.sendProgressNotification('end', currentPage, this.stats.totalUnique);
+                            }
                             break;
                         }
                         currentPage++;
@@ -329,7 +357,7 @@ class DubicarsListingParser {
 
                     const pageProcessTime = Date.now() - pageStartTime;
                     console.log(`✅ [${currentPage}] Найдено ${newLinks.length} новых объявлений (всего: ${carLinks.length}, дубликатов: ${duplicatesCount}, время: ${pageProcessTime}ms)`);
-                    console.log(`   📈 Общая статистика: уникальных=${stats.totalUnique}, дубликатов=${stats.totalDuplicates}, найдено=${stats.totalFound}`);
+                    console.log(`   📈 Общая статистика: уникальных=${this.stats.totalUnique}, дубликатов=${this.stats.totalDuplicates}, найдено=${this.stats.totalFound}`);
                     
                     // Логируем первые несколько ссылок для отладки (только на первых страницах)
                     if (newLinks.length > 0 && currentPage <= 3) {
@@ -356,45 +384,55 @@ class DubicarsListingParser {
                 }
 
                 // Финальная статистика
-                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
-                const avgPagesPerSec = stats.totalPagesProcessed > 0 ? (stats.totalPagesProcessed / totalTime).toFixed(2) : 0;
-                const avgLinksPerSec = stats.totalUnique > 0 ? (stats.totalUnique / totalTime).toFixed(2) : 0;
+                const totalTime = Math.round((Date.now() - this.stats.startTime) / 1000);
+                const avgPagesPerSec = this.stats.totalPagesProcessed > 0 ? (this.stats.totalPagesProcessed / totalTime).toFixed(2) : 0;
+                const avgLinksPerSec = this.stats.totalUnique > 0 ? (this.stats.totalUnique / totalTime).toFixed(2) : 0;
                 
                 console.log("=".repeat(80));
                 console.log(`🏁 ЗАВЕРШЕНИЕ ПАРСИНГА DUBICARS`);
                 console.log(`⏰ Время завершения: ${new Date().toLocaleString('ru-RU')}`);
                 console.log(`⏱️  Общее время работы: ${totalTime}с (${Math.floor(totalTime / 60)}м ${totalTime % 60}с)`);
                 console.log(`📊 ФИНАЛЬНАЯ СТАТИСТИКА:`);
-                console.log(`   📄 Обработано страниц: ${stats.totalPagesProcessed}`);
-                console.log(`   🔗 Всего найдено объявлений: ${stats.totalFound}`);
-                console.log(`   ✅ Уникальных объявлений: ${stats.totalUnique}`);
-                console.log(`   🔄 Дубликатов: ${stats.totalDuplicates}`);
-                console.log(`   ⚠️  Ошибок: ${stats.totalErrors}`);
+                console.log(`   📄 Обработано страниц: ${this.stats.totalPagesProcessed}`);
+                console.log(`   🔗 Всего найдено объявлений: ${this.stats.totalFound}`);
+                console.log(`   ✅ Уникальных объявлений: ${this.stats.totalUnique}`);
+                console.log(`   🔄 Дубликатов: ${this.stats.totalDuplicates}`);
+                console.log(`   ⚠️  Ошибок: ${this.stats.totalErrors}`);
                 console.log(`   📈 Производительность: ${avgPagesPerSec} стр/с, ${avgLinksPerSec} объяв/с`);
-                console.log(`   🛑 Причина остановки: ${stats.stopReason || 'Успешное завершение'}`);
+                console.log(`   🛑 Причина остановки: ${this.stats.stopReason || 'Успешное завершение'}`);
                 console.log(`   📍 Последняя страница: ${currentPage - 1}`);
                 console.log("=".repeat(80));
+
+                if (telegramService.getStatus().enabled) {
+                    await this.sendProgressNotification('end', currentPage - 1, this.stats.totalUnique);
+                }
                 
                 break; // Успешно завершили парсинг
             } catch (error) {
-                stats.totalErrors++;
-                const totalTime = Math.round((Date.now() - stats.startTime) / 1000);
+                this.stats.totalErrors++;
+                const totalTime = Math.round((Date.now() - this.stats.startTime) / 1000);
                 console.error("=".repeat(80));
                 console.error(`❌ КРИТИЧЕСКАЯ ОШИБКА при парсинге страницы ${currentPage}`);
                 console.error(`   Ошибка: ${error.name} - ${error.message}`);
                 console.error(`   Время работы до ошибки: ${totalTime}с`);
-                console.error(`   Обработано страниц: ${stats.totalPagesProcessed}`);
-                console.error(`   Найдено объявлений: ${stats.totalUnique}`);
+                console.error(`   Обработано страниц: ${this.stats.totalPagesProcessed}`);
+                console.error(`   Найдено объявлений: ${this.stats.totalUnique}`);
                 console.error(`   Попытка: ${attempt + 1}/${this.config.maxRetries}`);
                 if (error.stack) {
                     console.error(`   Стек: ${error.stack.split('\n').slice(0, 3).join('\n   ')}`);
                 }
                 console.error("=".repeat(80));
+                
+                // Отправляем уведомление о критической ошибке
+                if (telegramService.getStatus().enabled) {
+                    await this.sendErrorNotification(currentPage, error, 'unknown', attempt + 1 >= this.config.maxRetries);
+                }
+                
                 attempt++;
                 
                 if (attempt >= this.config.maxRetries) {
-                    stats.stopReason = `Достигнут лимит повторных попыток (${this.config.maxRetries})`;
-                    console.error(`❌ ОСТАНОВКА: ${stats.stopReason}`);
+                    this.stats.stopReason = `Достигнут лимит повторных попыток (${this.config.maxRetries})`;
+                    console.error(`❌ ОСТАНОВКА: ${this.stats.stopReason}`);
                     throw error;
                 }
                 
@@ -444,6 +482,69 @@ class DubicarsListingParser {
                 }, 200); // Уменьшили интервал
             });
         }, this.scrollContainers);
+    }
+
+    /**
+     * Отправка уведомления о прогрессе в Telegram
+     */
+    async sendProgressNotification(type, page, listingsCount) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const duration = this.stats.startTime 
+                ? Math.round((Date.now() - this.stats.startTime) / 1000 / 60) 
+                : 0;
+
+            let message = '';
+            
+            if (type === 'start') {
+                message = `🚀 *Dubicars: Начало парсинга*\n\n` +
+                         `Страница: ${page}\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            } else if (type === 'progress') {
+                message = `📊 *Dubicars: Прогресс парсинга*\n\n` +
+                         `Страниц обработано: ${page}\n` +
+                         `Объявлений найдено: ${listingsCount}\n` +
+                         `Ошибок: ${this.stats.totalErrors}\n` +
+                         `Время работы: ${duration} мин\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            } else if (type === 'end') {
+                message = `✅ *Dubicars: Парсинг завершен*\n\n` +
+                         `Всего страниц: ${page}\n` +
+                         `Всего объявлений: ${listingsCount}\n` +
+                         `Ошибок: ${this.stats.totalErrors}\n` +
+                         `Время работы: ${duration} мин\n` +
+                         `Время: ${new Date().toLocaleString('ru-RU')}`;
+            }
+
+            if (message) {
+                await telegramService.sendMessage(message);
+            }
+        } catch (error) {
+            console.warn(`⚠️ Ошибка отправки уведомления в Telegram:`, error.message);
+        }
+    }
+
+    /**
+     * Отправка уведомления об ошибке в Telegram
+     */
+    async sendErrorNotification(page, error, url = 'unknown', isCritical = false) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const emoji = isCritical ? '🚨' : '⚠️';
+            const message = `${emoji} *Dubicars: Ошибка парсинга*\n\n` +
+                          `Страница: ${page}\n` +
+                          `Ошибка: ${error.name || 'Unknown'}\n` +
+                          `Сообщение: ${error.message}\n` +
+                          (url !== 'unknown' ? `URL: ${url}\n` : '') +
+                          `Всего ошибок: ${this.stats.totalErrors}\n` +
+                          `Время: ${new Date().toLocaleString('ru-RU')}`;
+
+            await telegramService.sendMessage(message);
+        } catch (telegramError) {
+            console.warn(`⚠️ Ошибка отправки уведомления об ошибке:`, telegramError.message);
+        }
     }
 
     /**

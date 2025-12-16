@@ -1,3 +1,5 @@
+const { telegramService } = require('../../../../services/TelegramService');
+
 /**
  * Парсинг детальной информации для Carswitch.com
  */
@@ -5,6 +7,9 @@
 class CarswitchDetailParser {
     constructor(config) {
         this.config = config;
+        
+        // Счетчик ошибок для логирования
+        this.errorCount = 0;
         
         // Селекторы для детальной страницы
         this.selectors = {
@@ -388,10 +393,37 @@ class CarswitchDetailParser {
             return carDetails;
 
         } catch (error) {
-            console.error(`❌ Ошибка при загрузке данных с ${url}:`, error);
+            this.errorCount++;
+            console.error(`❌ Ошибка при загрузке данных с ${url}:`, error.message);
+            
+            // Отправляем уведомление в Telegram при критических ошибках
+            if (telegramService.getStatus().enabled && this.errorCount % 10 === 0) {
+                await this.sendErrorNotification(url, error);
+            }
+            
             return null;
         } finally {
             await page.close();
+        }
+    }
+
+    /**
+     * Отправка уведомления об ошибке в Telegram
+     */
+    async sendErrorNotification(url, error) {
+        if (!telegramService.getStatus().enabled) return;
+
+        try {
+            const message = `⚠️ *Carswitch: Ошибка парсинга детальной страницы*\n\n` +
+                          `URL: ${url}\n` +
+                          `Ошибка: ${error.name || 'Unknown'}\n` +
+                          `Сообщение: ${error.message}\n` +
+                          `Всего ошибок: ${this.errorCount}\n` +
+                          `Время: ${new Date().toLocaleString('ru-RU')}`;
+
+            await telegramService.sendMessage(message);
+        } catch (telegramError) {
+            console.warn(`⚠️ Ошибка отправки уведомления:`, telegramError.message);
         }
     }
 
