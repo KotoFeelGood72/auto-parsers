@@ -143,7 +143,7 @@ class DubizzleListingParser {
                     // Обновляем статистику
                     this.stats.totalPages = currentPage;
                     this.stats.totalListings += carLinks.length;
-
+                    
                     // Логируем первые несколько ссылок для отладки
                     if (carLinks.length > 0 && currentPage <= 3) {
                         console.log(`🔗 Первые 3 ссылки на странице ${currentPage}:`);

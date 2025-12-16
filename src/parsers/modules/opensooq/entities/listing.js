@@ -263,15 +263,15 @@ class OpenSooqListingParser {
                             
                             const result = links
                                 .map(a => {
-                                    const href = a.getAttribute('href');
+                                        const href = a.getAttribute('href');
                                     if (!href) return null;
                                     
-                                    // Проверяем, полная ли это ссылка или относительная
+                                        // Проверяем, полная ли это ссылка или относительная
                                     let fullUrl;
                                     if (href.startsWith('http')) {
                                         fullUrl = href;
                                     } else if (href.startsWith('/')) {
-                                        // Конструируем полный URL из относительного пути
+                                            // Конструируем полный URL из относительного пути
                                         fullUrl = baseUrl + href;
                                     } else {
                                         fullUrl = baseUrl + '/' + href;
