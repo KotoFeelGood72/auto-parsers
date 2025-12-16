@@ -69,16 +69,16 @@ docker-compose run --rm parser node --expose-gc --max-old-space-size=512 src/ind
 docker-compose run --rm parser node --expose-gc --max-old-space-size=512 src/index.js single carswitch
 
 # DubiCars
-docker-compose run --rm parser node --expose-gc --max-old-space-size=512 src/index.js single dubicars
+docker-compose run --rm parser node src/index.js single dubicars
 
 # Dubizzle
-docker-compose run --rm parser node --expose-gc --max-old-space-size=512 src/index.js single dubizzle
+docker-compose run --rm parser node src/index.js single dubizzle
 
 # OneClickDrive
-docker-compose run --rm parser node --expose-gc --max-old-space-size=512 src/index.js single oneclickdrive
+docker-compose run --rm parser node src/index.js single oneclickdrive
 
 # OpenSooq
-docker-compose run --rm parser node --expose-gc --max-old-space-size=512 src/index.js single opensooq
+docker-compose run --rm parser node src/index.js single opensooq
 ```
 
 ## 📦 Установка зависимостей
