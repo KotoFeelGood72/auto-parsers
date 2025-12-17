@@ -25,6 +25,10 @@ class TelegramService {
 
         if (!this.isEnabled) {
             console.warn('⚠️ Telegram уведомления отключены: не указаны botToken или chatId');
+            console.warn(`   botToken: ${this.config.botToken ? 'установлен' : 'не установлен'}`);
+            console.warn(`   chatId: ${this.config.chatId ? 'установлен' : 'не установлен'}`);
+        } else {
+            console.log('✅ Telegram уведомления включены');
         }
     }
 
@@ -102,6 +106,7 @@ class TelegramService {
         const payload = {
             chat_id: this.config.chatId,
             text: message,
+            parse_mode: 'Markdown',
             ...options
         };
 
